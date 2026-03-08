@@ -1,0 +1,78 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, qa]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: msf_admin
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: metasploit_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U msf_admin -d metasploit_db"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_USER: msf_admin
+          DB_PASSWORD: ci_test_password
+          DB_NAME: metasploit_db
+          JWT_SECRET: ci-test-secret-not-for-production
+          PORT: 3000
+        run: npm test
+
+  docker-build:
+    name: Validate Docker Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t msf-backend:ci ./backend
+
+      - name: Verify image starts
+        run: |
+          docker run -d --name msf-test \
+            -e DB_HOST=localhost \
+            -e DB_USER=test \
+            -e DB_PASSWORD=test \
+            -e DB_NAME=test \
+            -e JWT_SECRET=test \
+            msf-backend:ci
+          sleep 3
+          docker logs msf-test
+          docker stop msf-test
