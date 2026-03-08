@@ -56,6 +56,21 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
+function validatePassword(password) {
+    if (!password || password.length < 8) return "Password must be at least 8 characters.";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter.";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter.";
+    if (!/[^a-zA-Z0-9]/.test(password)) return "Password must contain at least one special character.";
+    return null;
+}
+
+function validateUsername(username) {
+    if (!username || username.length < 3) return "Username must be at least 3 characters.";
+    if (username.length > 30) return "Username must be 30 characters or fewer.";
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) return "Username may only contain letters, numbers, hyphens, and underscores.";
+    return null;
+}
+
 const pool = new Pool({
     host: process.env.DB_HOST || 'database',
     user: process.env.DB_USER || 'msf_admin',
@@ -104,10 +119,19 @@ const initDb = async () => {
 };
 initDb();
 
+app.get('/api/health', async (_req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'ok', uptime: process.uptime() });
+    } catch {
+        res.status(503).json({ status: 'unavailable' });
+    }
+});
+
 const pendingVerifications = new Map();
 const activeUsers = new Map();
 
-setInterval(() => {
+const verificationCleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [email, data] of pendingVerifications) {
         if (now - data.createdAt > VERIFICATION_TTL_MS) {
@@ -115,6 +139,7 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000);
+verificationCleanupTimer.unref();
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -131,18 +156,13 @@ app.post('/api/register/init', async (req, res) => {
     if (!username || !email || !password) {
         return res.status(400).json({ error: "All fields are required." });
     }
-    if (password.length < 8) {
-        return res.status(400).json({ error: "Password must be at least 8 characters." });
-    }
-    if (!/[a-z]/.test(password)) {
-        return res.status(400).json({ error: "Password must contain at least one lowercase letter." });
-    }
-    if (!/[A-Z]/.test(password)) {
-        return res.status(400).json({ error: "Password must contain at least one uppercase letter." });
-    }
-    if (!/[^a-zA-Z0-9]/.test(password)) {
-        return res.status(400).json({ error: "Password must contain at least one special character." });
-    }
+
+    const usernameError = validateUsername(username);
+    if (usernameError) return res.status(400).json({ error: usernameError });
+
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ error: "Invalid email format." });
@@ -174,13 +194,13 @@ app.post('/api/register/init', async (req, res) => {
             text: `Hello ${username},\n\nYour verification code is: ${verificationCode}\n\nThis code expires in 10 minutes.`
         };
 
-        transporter.sendMail(mailOptions, (error) => {
-            if (error) {
-                console.log(`[FALLBACK] Verification code for ${email}: ${verificationCode}`);
-                return res.json({ message: "Code generated. Check server logs if email delivery fails." });
-            }
+        try {
+            await transporter.sendMail(mailOptions);
             return res.json({ message: "Verification code sent to your email." });
-        });
+        } catch {
+            console.log(`[FALLBACK] Verification code for ${email}: ${verificationCode}`);
+            return res.json({ message: "Code generated. Check server logs if email delivery fails." });
+        }
     } catch (e) {
         res.status(500).json({ error: "Internal server error." });
     }
@@ -395,18 +415,9 @@ app.put('/api/admin/users/:id/password', authenticate, requireAdmin, async (req,
     if (isNaN(userId)) {
         return res.status(400).json({ error: "Invalid user ID." });
     }
-    if (!newPassword || newPassword.length < 8) {
-        return res.status(400).json({ error: "New password must be at least 8 characters." });
-    }
-    if (!/[a-z]/.test(newPassword)) {
-        return res.status(400).json({ error: "Password must contain a lowercase letter." });
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-        return res.status(400).json({ error: "Password must contain an uppercase letter." });
-    }
-    if (!/[^a-zA-Z0-9]/.test(newPassword)) {
-        return res.status(400).json({ error: "Password must contain a special character." });
-    }
+
+    const pwError = validatePassword(newPassword);
+    if (pwError) return res.status(400).json({ error: pwError });
 
     try {
         const check = await pool.query('SELECT id FROM users WHERE id = $1', [userId]);
@@ -447,7 +458,21 @@ app.delete('/api/admin/users/:id', authenticate, requireAdmin, async (req, res) 
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`[SYSTEM] MSF Control Node Active on Port ${PORT}`));
+    const server = app.listen(PORT, () => console.log(`[SYSTEM] MSF Control Node Active on Port ${PORT}`));
+
+    const shutdown = async (signal) => {
+        console.log(`\n[SYSTEM] ${signal} received — shutting down gracefully...`);
+        server.close(() => {
+            pool.end().then(() => {
+                console.log('[SYSTEM] Database pool closed.');
+                process.exit(0);
+            });
+        });
+        setTimeout(() => process.exit(1), 10000);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = app;
