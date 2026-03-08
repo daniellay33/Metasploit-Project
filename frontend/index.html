@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>SSEP - Metasploit Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        *, *::before, *::after { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        body { background-color: #030712; position: relative; }
+        #matrix-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.6; }
+
+        /* Auth */
+        .auth-card { background: linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.96)); border: 1px solid rgba(59, 130, 246, 0.2); box-shadow: 0 0 60px rgba(59, 130, 246, 0.08), 0 25px 60px rgba(0, 0, 0, 0.5); }
+        .auth-input { background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(100, 116, 139, 0.3); padding: 11px 14px; width: 100%; color: #e2e8f0; border-radius: 8px; outline: none; transition: all 0.2s; font-size: 13px; font-family: 'Inter', sans-serif; }
+        .auth-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); }
+        .auth-input::placeholder { color: #475569; }
+        .auth-btn-primary { background: linear-gradient(135deg, #2563eb, #1d4ed8); border: none; padding: 11px 16px; border-radius: 10px; font-size: 13px; cursor: pointer; font-weight: 600; color: #fff; transition: all 0.2s; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25); }
+        .auth-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35); filter: brightness(1.1); }
+        .auth-btn-green { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25); }
+        .auth-btn-green:hover { box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35); }
+        .auth-tab { padding: 11px 0; font-size: 13px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; color: #64748b; transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none; }
+        .auth-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+        .auth-tab:hover:not(.active) { color: #94a3b8; }
+        .pw-rule { font-size: 11px; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
+        .pw-rule.pass { color: #4ade80; }
+        .pw-rule.fail { color: #64748b; }
+
+        /* Sidebar */
+        .sidebar { background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(10, 15, 30, 0.98)); border-right: 1px solid rgba(51, 65, 85, 0.5); }
+        .nav-btn { border: 1px solid transparent; transition: all 0.15s ease; }
+        .nav-btn:hover { background: rgba(51, 65, 85, 0.4); border-color: rgba(51, 65, 85, 0.5); }
+        .nav-btn.active { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.25); border-left: 2px solid #3b82f6; }
+        .nav-icon { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+
+        /* Layout */
+        .glass-panel { background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.8)); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.4); }
+        .glass-inner { background: rgba(2, 6, 23, 0.6); backdrop-filter: blur(4px); border: 1px solid rgba(51, 65, 85, 0.3); }
+        .card-hover { transition: all 0.2s ease; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3); border-color: rgba(59, 130, 246, 0.3); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .table-scrollbar::-webkit-scrollbar { width: 6px; }
+
+        /* Terminal */
+        .terminal-window { background: #0a0a0a; border: 1px solid rgba(51, 65, 85, 0.5); box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5); }
+        .terminal-bar { background: linear-gradient(180deg, #1e293b, #0f172a); border-bottom: 1px solid rgba(51, 65, 85, 0.4); }
+        #term { font-family: 'JetBrains Mono', monospace; }
+
+        /* Buttons */
+        .btn-action { transition: all 0.15s ease; font-weight: 600; letter-spacing: 0.01em; }
+        .btn-action:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        .btn-action:active { transform: translateY(0); }
+
+        /* Guide feature cards */
+        .feature-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    </style>
+</head>
+<body class="text-slate-100 h-screen flex overflow-hidden">
+
+    <canvas id="matrix-bg"></canvas>
+
+    <!-- Authentication Overlay -->
+    <div id="connectionOverlay" class="absolute inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div class="auth-card w-[400px] rounded-2xl overflow-hidden">
+            <div class="px-8 pt-8 pb-5 text-center">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600/15 border border-blue-500/20 mb-4">
+                    <i class="fas fa-spider text-2xl text-blue-400"></i>
+                </div>
+                <h2 class="text-white text-xl font-bold tracking-tight">MSF Cloud</h2>
+                <p class="text-slate-500 text-xs mt-1.5">Security Exploitation & Education Platform</p>
+            </div>
+            <div class="flex justify-center gap-10 px-8 border-b border-slate-700/40">
+                <button onclick="switchAuth('login')" id="btn-auth-login" class="auth-tab active">Login</button>
+                <button onclick="switchAuth('signup')" id="btn-auth-signup" class="auth-tab">Sign Up</button>
+            </div>
+            <div class="p-8 relative">
+                <div id="auth-message" class="hidden text-center text-xs font-bold mb-5 p-2.5 rounded-lg"></div>
+                <div id="form-login">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block mb-2">Username</label>
+                            <input type="text" id="login-user" placeholder="Enter your username" class="auth-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block mb-2">Password</label>
+                            <input type="password" id="login-pass" placeholder="Enter your password" class="auth-input">
+                        </div>
+                    </div>
+                    <button onclick="login()" class="auth-btn-primary w-full mt-7"><i class="fas fa-sign-in-alt mr-2"></i>Connect</button>
+                </div>
+                <div id="form-signup" class="hidden">
+                    <div class="space-y-3.5">
+                        <div>
+                            <label class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block mb-2">Email</label>
+                            <input type="email" id="signup-email" placeholder="your@email.com" class="auth-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block mb-2">Username</label>
+                            <input type="text" id="signup-user" placeholder="Choose a username" class="auth-input">
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block mb-2">Password</label>
+                            <input type="password" id="signup-pass" placeholder="Create a strong password" class="auth-input" oninput="checkPasswordStrength(this.value)">
+                        </div>
+                        <div id="pw-rules" class="bg-slate-800/40 rounded-xl p-3.5 space-y-2 border border-slate-700/30">
+                            <p class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Password Requirements</p>
+                            <div id="pw-len" class="pw-rule fail"><i class="fas fa-circle text-[6px]"></i> Minimum 8 characters</div>
+                            <div id="pw-lower" class="pw-rule fail"><i class="fas fa-circle text-[6px]"></i> One lowercase letter (a-z)</div>
+                            <div id="pw-upper" class="pw-rule fail"><i class="fas fa-circle text-[6px]"></i> One uppercase letter (A-Z)</div>
+                            <div id="pw-special" class="pw-rule fail"><i class="fas fa-circle text-[6px]"></i> One special character (!@#$...)</div>
+                        </div>
+                    </div>
+                    <button onclick="requestRegistration()" class="auth-btn-primary w-full mt-6"><i class="fas fa-paper-plane mr-2"></i>Send Verification Code</button>
+                </div>
+                <div id="form-verify" class="hidden">
+                    <div class="text-center mb-6">
+                        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-600/15 border border-emerald-500/20 mb-3">
+                            <i class="fas fa-envelope-open-text text-xl text-emerald-400"></i>
+                        </div>
+                        <p class="text-xs text-slate-400">A 6-digit code was sent to your email.</p>
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-blue-400 font-semibold uppercase tracking-wider block mb-2">Verification Code</label>
+                        <input type="text" id="verify-code" maxlength="6" placeholder="000000" class="auth-input text-center text-lg font-bold tracking-[0.4em]" style="font-family: 'JetBrains Mono', monospace;">
+                    </div>
+                    <button onclick="verifyAndRegister()" class="auth-btn-primary auth-btn-green w-full mt-6"><i class="fas fa-check-circle mr-2"></i>Verify & Register</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="w-[260px] sidebar p-5 shrink-0 flex flex-col">
+        <div class="flex items-center gap-3 mb-8 px-1">
+            <div class="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/25 flex items-center justify-center">
+                <i class="fas fa-spider text-blue-400 text-sm"></i>
+            </div>
+            <div>
+                <h1 class="text-white font-bold text-[15px] leading-tight">MSF Cloud</h1>
+                <p class="text-slate-500 text-[10px] font-medium">v1.0 Security Platform</p>
+            </div>
+        </div>
+
+        <p class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold px-3 mb-2">Navigation</p>
+        <nav class="space-y-1 text-[13px] font-medium flex-1">
+            <button onclick="showTab('guide')" class="nav-btn active w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-guide">
+                <span class="nav-icon bg-cyan-500/15 text-cyan-400"><i class="fas fa-compass"></i></span>
+                <span class="text-slate-200">Quick Guide</span>
+            </button>
+            <button onclick="showTab('scanner')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-scanner">
+                <span class="nav-icon bg-blue-500/15 text-blue-400"><i class="fas fa-satellite-dish"></i></span>
+                <span class="text-slate-300">Web Scanner</span>
+            </button>
+            <button onclick="showTab('attack')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-attack">
+                <span class="nav-icon bg-rose-500/15 text-rose-400"><i class="fas fa-crosshairs"></i></span>
+                <span class="text-slate-300">Exploit Engine</span>
+            </button>
+            <button onclick="showTab('repo')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-repo">
+                <span class="nav-icon bg-amber-500/15 text-amber-400"><i class="fas fa-box-archive"></i></span>
+                <span class="text-slate-300">Exploit Repo</span>
+            </button>
+            <button onclick="showTab('payload')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-payload">
+                <span class="nav-icon bg-indigo-500/15 text-indigo-400"><i class="fas fa-wand-magic-sparkles"></i></span>
+                <span class="text-slate-300">Payloads</span>
+            </button>
+            <button onclick="showTab('stride')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-stride">
+                <span class="nav-icon bg-emerald-500/15 text-emerald-400"><i class="fas fa-shield-halved"></i></span>
+                <span class="text-slate-300">STRIDE Model</span>
+            </button>
+            <div id="admin-nav-section" class="hidden">
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold px-3 mt-4 mb-2">Admin</p>
+                <button onclick="showTab('users')" class="nav-btn w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-lg" id="btn-users">
+                    <span class="nav-icon bg-orange-500/15 text-orange-400"><i class="fas fa-users-gear"></i></span>
+                    <span class="text-slate-300">User Management</span>
+                </button>
+            </div>
+        </nav>
+
+        <div class="border-t border-slate-800 pt-4 space-y-2.5 px-1">
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] text-slate-500"><i class="fas fa-users text-indigo-400/70 mr-1.5"></i>Registered</span>
+                <span id="user-count-display" class="text-[11px] font-bold text-white bg-indigo-500/20 px-2 py-0.5 rounded-md">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] text-slate-500"><i class="fas fa-circle text-emerald-400 mr-1.5 text-[7px] animate-pulse"></i>Online</span>
+                <span id="online-count-display" class="text-[11px] font-bold text-white bg-emerald-500/20 px-2 py-0.5 rounded-md">0</span>
+            </div>
+            <div class="flex items-center gap-2 mt-3 bg-slate-800/40 rounded-lg px-3 py-2">
+                <div class="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center">
+                    <i class="fas fa-user text-blue-400 text-[9px]"></i>
+                </div>
+                <span id="display-username" class="text-[11px] font-semibold text-slate-200 truncate">Guest</span>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 p-7 overflow-y-auto relative flex flex-col bg-transparent">
+
+        <!-- TAB: Quick Guide (default landing) -->
+        <div id="tab-guide" class="tab-content shrink-0">
+            <div class="glass-panel p-7 rounded-2xl shadow-lg mb-6">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="feature-icon bg-cyan-500/15 border border-cyan-500/20"><i class="fas fa-compass text-cyan-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Welcome to MSF Cloud</h2>
+                        <p class="text-sm text-slate-400 mt-0.5">Your simulated penetration-testing and security education platform.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+                    <div class="glass-inner rounded-xl p-5 card-hover cursor-pointer" onclick="showTab('scanner')">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-blue-500/15 border border-blue-500/20"><i class="fas fa-satellite-dish text-blue-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">Web Scanner</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Launch AI-powered scans against target URLs. Detect technologies, fingerprint systems, and match CVE vulnerabilities. Export findings as PDF reports.</p>
+                    </div>
+                    <div class="glass-inner rounded-xl p-5 card-hover cursor-pointer" onclick="showTab('attack')">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-rose-500/15 border border-rose-500/20"><i class="fas fa-crosshairs text-rose-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">Exploit Engine</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Run 10+ simulated attack modules: keylogging, screenshots, webcam, privilege escalation, credential dumping, and more with realistic terminal output.</p>
+                    </div>
+                    <div class="glass-inner rounded-xl p-5 card-hover cursor-pointer" onclick="showTab('repo')">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-amber-500/15 border border-amber-500/20"><i class="fas fa-box-archive text-amber-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">Exploit Repository</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Browse well-known modules like EternalBlue and BlueKeep. Import new exploits from external sources into the internal repository.</p>
+                    </div>
+                    <div class="glass-inner rounded-xl p-5 card-hover cursor-pointer" onclick="showTab('payload')">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-indigo-500/15 border border-indigo-500/20"><i class="fas fa-wand-magic-sparkles text-indigo-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">Payload Generator</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Generate custom msfvenom payloads. Choose architecture (x64/x86) and encoder (xor, shikata_ga_nai) for evasive testing payloads.</p>
+                    </div>
+                    <div class="glass-inner rounded-xl p-5 card-hover cursor-pointer" onclick="showTab('stride')">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-emerald-500/15 border border-emerald-500/20"><i class="fas fa-shield-halved text-emerald-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">STRIDE Model</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">View the complete STRIDE threat model covering all six categories and the mitigations actively implemented in this platform.</p>
+                    </div>
+                    <div class="glass-inner rounded-xl p-5 card-hover">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="feature-icon bg-slate-500/15 border border-slate-500/20"><i class="fas fa-clock-rotate-left text-slate-400"></i></div>
+                            <h3 class="text-sm font-bold text-white">Audit History</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Every action is logged in a tamper-proof audit trail below. Refresh in real-time or export as CSV for compliance reporting.</p>
+                    </div>
+                </div>
+
+                <div class="bg-blue-950/30 rounded-xl p-5 border border-blue-800/20">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="fas fa-info-circle text-blue-400 text-sm"></i>
+                        <h3 class="text-sm font-bold text-blue-300">Important Notes</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <i class="fas fa-lock text-emerald-400 text-[10px]"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-white mb-0.5">Role-Based Access</p>
+                                <p class="text-[11px] text-slate-400 leading-relaxed">Admin-only modules require administrator privileges. Standard users have SOC Analyst access.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <i class="fas fa-gauge-high text-amber-400 text-[10px]"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-white mb-0.5">Rate Limiting</p>
+                                <p class="text-[11px] text-slate-400 leading-relaxed">API requests are limited to 200 per 15 minutes to demonstrate DoS mitigation.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-7 h-7 rounded-lg bg-rose-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <i class="fas fa-exclamation-triangle text-rose-400 text-[10px]"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-semibold text-white mb-0.5">Educational Only</p>
+                                <p class="text-[11px] text-slate-400 leading-relaxed">All exploits are simulated. No real systems are harmed. Built for learning in a safe environment.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Web Scanner -->
+        <div id="tab-scanner" class="tab-content hidden shrink-0">
+            <div class="glass-panel p-7 rounded-2xl shadow-lg mb-6">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="feature-icon bg-blue-500/15 border border-blue-500/20"><i class="fas fa-satellite-dish text-blue-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Target Reconnaissance</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">AI-powered fingerprinting and CVE vulnerability matching.</p>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mb-6">
+                    <input type="url" id="target-url" placeholder="https://target-website.com" value="https://demo-vuln-site.com" class="flex-1 glass-inner px-4 py-3 rounded-xl text-sm text-blue-400 outline-none focus:border-blue-500/50 transition" style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">
+                    <button onclick="runScan()" id="btn-run-scan" class="btn-action bg-blue-600 hover:bg-blue-500 text-white px-7 py-3 rounded-xl flex items-center gap-2 text-sm shadow-lg shadow-blue-600/20">
+                        <i class="fas fa-bolt"></i> Run AI Scan
+                    </button>
+                </div>
+
+                <div id="scan-results" class="hidden grid grid-cols-2 gap-5">
+                    <div class="glass-inner p-5 rounded-xl">
+                        <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Fingerprinting Results</h3>
+                        <ul class="text-sm space-y-2.5" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                            <li class="text-emerald-400"><span class="text-slate-500">[+]</span> OS: Windows Server 2019</li>
+                            <li class="text-emerald-400"><span class="text-slate-500">[+]</span> Web Server: Apache 2.4.41</li>
+                            <li class="text-emerald-400"><span class="text-slate-500">[+]</span> CMS: WordPress 5.2.3</li>
+                        </ul>
+                    </div>
+                    <div class="glass-inner p-5 rounded-xl border-rose-900/30">
+                        <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">AI CVE Matcher</h3>
+                        <div class="mb-3">
+                            <span class="font-bold text-rose-400" style="font-family: 'JetBrains Mono', monospace;">CVE-2019-8942</span>
+                            <span class="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md text-[10px] font-bold ml-2">HIGH</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-5">Remote Code Execution vulnerability identified in WordPress core.</p>
+                        <button onclick="exportReport(this)" class="w-full btn-action bg-slate-800 hover:bg-slate-700 border border-slate-600/50 text-white py-2.5 rounded-lg text-xs">
+                            <i class="fas fa-file-pdf text-rose-400 mr-1.5"></i> Export PDF Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Exploit Engine -->
+        <div id="tab-attack" class="tab-content hidden shrink-0">
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
+                <div class="glass-panel p-7 rounded-2xl shadow-lg">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="feature-icon bg-rose-500/15 border border-rose-500/20"><i class="fas fa-crosshairs text-rose-400"></i></div>
+                        <div>
+                            <h2 class="font-bold text-white text-lg">Exploit Engine</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Select payload and run controlled simulated attacks.</p>
+                        </div>
+                    </div>
+
+                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Target IP</label>
+                    <input type="text" id="target-ip-attack" value="192.168.105.70" class="w-full glass-inner px-4 py-2.5 rounded-lg mb-4 text-sm text-white outline-none focus:border-slate-500/50 transition" style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">
+
+                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Attack Module</label>
+                    <select id="attack-type" class="w-full glass-inner px-4 py-2.5 rounded-lg text-sm text-rose-400 font-semibold mb-6 outline-none">
+                        <option value="reverse_shell">-- Connect Reverse Shell --</option>
+                        <optgroup label="Spying (Data Exfiltration)">
+                            <option value="keyscan">1. Keylogging Attack</option>
+                            <option value="screenshot">2. Screenshot Capture</option>
+                            <option value="webcam">3. Webcam Access</option>
+                            <option value="mic">4. Audio Recording</option>
+                            <option value="screenshare">5. Live Screen Monitoring</option>
+                        </optgroup>
+                        <optgroup label="System Control">
+                            <option value="getsystem">6. Privilege Escalation</option>
+                            <option value="hashdump">7. Credential Dumping</option>
+                            <option value="persistence">8. Persistence Setup</option>
+                            <option value="download">9. File Exfiltration</option>
+                            <option value="timestomp">10. Anti-Forensics</option>
+                        </optgroup>
+                    </select>
+
+                    <button onclick="runAttack()" class="w-full btn-action bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl flex justify-center items-center gap-2 text-sm shadow-lg shadow-rose-600/20">
+                        <i class="fas fa-play"></i> Execute Module
+                    </button>
+                </div>
+
+                <div class="terminal-window rounded-2xl flex flex-col h-[400px]">
+                    <div class="terminal-bar h-10 flex items-center px-4 rounded-t-2xl shrink-0">
+                        <div class="flex gap-2"><div class="w-3 h-3 rounded-full bg-red-500/80"></div><div class="w-3 h-3 rounded-full bg-yellow-500/80"></div><div class="w-3 h-3 rounded-full bg-green-500/80"></div></div>
+                        <span class="text-[10px] text-slate-500 ml-4 font-medium" style="font-family: 'JetBrains Mono', monospace;">root@msf_engine:~</span>
+                    </div>
+                    <div class="p-5 text-[#4ade80] text-xs flex-1 overflow-y-auto" id="term" style="font-family: 'JetBrains Mono', monospace;">
+                        msf6 > System initialized. Connected to Database.<br>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Exploit Repo -->
+        <div id="tab-repo" class="tab-content hidden shrink-0">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                <div class="glass-panel p-7 rounded-2xl shadow-lg">
+                    <div class="flex items-center gap-4 mb-5">
+                    <div class="feature-icon bg-amber-500/15 border border-amber-500/20"><i class="fas fa-box-archive text-amber-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Internal Repository</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Browse and manage exploit modules.</p>
+                        </div>
+                    </div>
+                    <div class="overflow-y-auto h-[220px] rounded-xl glass-inner p-3 table-scrollbar">
+                        <ul class="text-slate-300 space-y-1" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                            <li class="hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition"><i class="fas fa-bug text-rose-400 mr-2.5"></i>exploit/windows/smb/ms17_010_eternalblue</li>
+                            <li class="hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition"><i class="fas fa-bug text-rose-400 mr-2.5"></i>exploit/multi/http/wp_crop_rce</li>
+                            <li class="hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition"><i class="fas fa-bug text-rose-400 mr-2.5"></i>exploit/linux/http/apache_cgi_shell</li>
+                            <li class="hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition"><i class="fas fa-bug text-rose-400 mr-2.5"></i>exploit/windows/rdp/cve_2019_0708_bluekeep</li>
+                            <li class="hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition"><i class="fas fa-bug text-rose-400 mr-2.5"></i>post/windows/gather/hashdump</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="glass-panel p-7 rounded-2xl shadow-lg">
+                    <div class="flex items-center gap-4 mb-5">
+                    <div class="feature-icon bg-emerald-500/15 border border-emerald-500/20"><i class="fas fa-cloud-arrow-down text-emerald-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Add Exploit</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Import from external sources.</p>
+                        </div>
+                    </div>
+                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Source URL / Path</label>
+                    <input type="text" placeholder="https://github.com/user/new-exploit.rb" class="w-full glass-inner px-4 py-2.5 rounded-lg mb-4 text-sm text-white outline-none focus:border-slate-500/50 transition">
+                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Module Type</label>
+                    <select class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-6 outline-none text-sm">
+                        <option>Exploit</option><option>Auxiliary</option><option>Post</option>
+                    </select>
+                    <button onclick="alert('Importing exploit module to internal repository...')" class="w-full btn-action bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl flex justify-center items-center gap-2 text-sm shadow-lg shadow-emerald-600/20">
+                        <i class="fas fa-cloud-arrow-down"></i> Import to Repository
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Payload Generator -->
+        <div id="tab-payload" class="tab-content hidden shrink-0">
+            <div class="glass-panel p-7 rounded-2xl max-w-lg shadow-lg mb-6">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="feature-icon bg-indigo-500/15 border border-indigo-500/20"><i class="fas fa-wand-magic-sparkles text-indigo-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Payload Generator</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Generate msfvenom payloads for testing.</p>
+                    </div>
+                </div>
+                <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Architecture</label>
+                <select id="arch" class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-4 outline-none text-sm"><option>x64</option><option>x86</option></select>
+                <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Encoder</label>
+                <select id="encoder" class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-6 outline-none text-sm"><option>x64/xor</option><option>shikata_ga_nai</option></select>
+                <button onclick="runAttack('payload')" class="w-full btn-action bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl text-sm shadow-lg shadow-indigo-600/20">
+                    <i class="fas fa-wand-magic-sparkles mr-2"></i>Generate Payload
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB: STRIDE Model -->
+        <div id="tab-stride" class="tab-content hidden shrink-0">
+            <div class="glass-panel p-7 rounded-2xl shadow-lg mb-6">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="feature-icon bg-emerald-500/15 border border-emerald-500/20"><i class="fas fa-shield-halved text-emerald-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">STRIDE Threat Model</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Security mitigations implemented in this platform.</p>
+                    </div>
+                </div>
+                <div class="overflow-hidden rounded-xl border border-slate-700/40">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="bg-slate-800/60 text-[10px] text-slate-400 uppercase tracking-widest">
+                                <th class="py-3 px-5">Threat</th><th class="py-3 px-5">Description</th><th class="py-3 px-5">Mitigation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">Spoofing</td><td class="text-slate-400 px-5">Impersonating a user</td><td class="text-emerald-400 px-5">JWT Authentication & Email Verification</td>
+                            </tr>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">Tampering</td><td class="text-slate-400 px-5">Modifying data or code</td><td class="text-emerald-400 px-5">Input Validation & Parameterized SQL Queries</td>
+                            </tr>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">Repudiation</td><td class="text-slate-400 px-5">Denying an action</td><td class="text-emerald-400 px-5">Immutable Audit Logs in PostgreSQL</td>
+                            </tr>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">Info Disclosure</td><td class="text-slate-400 px-5">Leaking sensitive data</td><td class="text-emerald-400 px-5">Docker Virtual Networks Isolation</td>
+                            </tr>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">DoS</td><td class="text-slate-400 px-5">System Overload</td><td class="text-emerald-400 px-5">Express Rate Limiting (200 req / 15 min)</td>
+                            </tr>
+                            <tr class="border-t border-slate-700/30 hover:bg-slate-800/30 transition">
+                                <td class="py-3.5 px-5 text-white font-semibold">Elevation of Privilege</td><td class="text-slate-400 px-5">Gaining unauthorized access</td><td class="text-emerald-400 px-5">JWT-based RBAC with Server-side Verification</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: User Management (Admin only) -->
+        <div id="tab-users" class="tab-content hidden shrink-0">
+            <div class="glass-panel p-7 rounded-2xl shadow-lg mb-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-4">
+                        <div class="feature-icon bg-orange-500/15 border border-orange-500/20"><i class="fas fa-users-gear text-orange-400"></i></div>
+                        <div>
+                            <h2 class="font-bold text-white text-lg">User Management</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Manage registered users, roles, and credentials.</p>
+                        </div>
+                    </div>
+                    <button onclick="fetchAdminUsers()" class="btn-action text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-600/40 text-slate-300 px-3.5 py-2 rounded-lg"><i class="fas fa-arrows-rotate mr-1.5"></i>Refresh</button>
+                </div>
+
+                <div class="overflow-x-auto rounded-xl glass-inner">
+                    <table class="w-full text-left text-sm" id="admin-users-table">
+                        <thead class="bg-slate-900/95">
+                            <tr class="border-b border-slate-700/40 text-[10px] text-slate-500 uppercase tracking-widest">
+                                <th class="py-3 px-4">ID</th>
+                                <th class="py-3 px-4">Username</th>
+                                <th class="py-3 px-4">Email</th>
+                                <th class="py-3 px-4">Role</th>
+                                <th class="py-3 px-4">Created</th>
+                                <th class="py-3 px-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-body" class="text-slate-300 text-xs" style="font-family: 'JetBrains Mono', monospace;"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reset Password Panel -->
+            <div id="reset-pw-panel" class="glass-panel p-7 rounded-2xl shadow-lg mb-6 hidden">
+                <div class="flex items-center gap-4 mb-5">
+                    <div class="feature-icon bg-sky-500/15 border border-sky-500/20"><i class="fas fa-key text-sky-400"></i></div>
+                    <div>
+                        <h2 class="font-bold text-white text-lg">Reset Password</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Set a new password for <span id="reset-pw-username" class="text-sky-400 font-semibold"></span></p>
+                    </div>
+                </div>
+                <input type="hidden" id="reset-pw-user-id">
+                <div class="max-w-md space-y-3">
+                    <div>
+                        <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">New Password</label>
+                        <input type="password" id="reset-pw-input" placeholder="Minimum 8 chars, upper, lower, special" class="w-full glass-inner px-4 py-2.5 rounded-lg text-sm text-white outline-none focus:border-sky-500/50 transition">
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button onclick="submitResetPassword()" class="btn-action bg-sky-600 hover:bg-sky-500 text-white px-5 py-2.5 rounded-lg text-xs shadow-lg shadow-sky-600/20"><i class="fas fa-check mr-1.5"></i>Reset Password</button>
+                        <button onclick="document.getElementById('reset-pw-panel').classList.add('hidden')" class="btn-action bg-slate-700 hover:bg-slate-600 text-slate-300 px-5 py-2.5 rounded-lg text-xs">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Table -->
+        <div class="glass-panel p-6 rounded-2xl shadow-lg flex-1 flex flex-col min-h-[280px]">
+            <div class="flex justify-between items-center mb-4 shrink-0">
+                <h3 class="text-sm font-bold text-slate-300"><i class="fas fa-clock-rotate-left text-blue-400 mr-2"></i>Live Audit History</h3>
+                <div class="flex gap-2">
+                    <button onclick="fetchLogs()" class="btn-action text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-600/40 text-slate-300 px-3 py-1.5 rounded-lg"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
+                    <button onclick="exportCSV()" class="btn-action text-[11px] bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold px-3 py-1.5 rounded-lg"><i class="fas fa-file-csv mr-1"></i>Export CSV</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto overflow-y-auto flex-1 table-scrollbar rounded-xl glass-inner">
+                <table class="w-full text-left text-sm relative" id="history-table">
+                    <thead class="sticky top-0 bg-slate-900/95 z-10">
+                        <tr class="border-b border-slate-700/40 text-[10px] text-slate-500 uppercase tracking-widest">
+                            <th class="py-3 px-4">ID</th><th class="py-3 px-4">User</th><th class="py-3 px-4">Action</th><th class="py-3 px-4">Target</th><th class="py-3 px-4">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs" class="text-slate-300 text-xs" style="font-family: 'JetBrains Mono', monospace;"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+
+        /* Matrix Background */
+        const canvas = document.getElementById('matrix-bg');
+        const ctx = canvas.getContext('2d');
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        const characters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$@#&%*";
+        const fontSize = 16;
+        const drops = Array(Math.floor(width / fontSize)).fill(1);
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(3, 7, 18, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#0F0';
+            ctx.font = fontSize + 'px monospace';
+            for (let i = 0; i < drops.length; i++) {
+                const text = characters.charAt(Math.floor(Math.random() * characters.length));
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                if (drops[i] * fontSize > height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+        }
+        setInterval(drawMatrix, 50);
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            const nc = Math.floor(width / fontSize);
+            while (drops.length < nc) drops.push(1);
+            drops.length = nc;
+        });
+
+        /* Helpers */
+        function escapeHtml(str) {
+            if (str == null) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        }
+        let authToken = null;
+        async function fetchAPI(path, options = {}) {
+            const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+            if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+            return fetch(API_BASE + path, { ...options, headers });
+        }
+
+        /* Auth */
+        let currentUserRole = 'Analyst';
+        let currentUser = null;
+        function showMessage(text, isError) {
+            const m = document.getElementById('auth-message');
+            m.innerText = text;
+            m.className = 'text-center text-xs font-bold mb-5 p-2.5 rounded-lg block ' +
+                (isError ? 'bg-rose-500/15 text-rose-300 border border-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25');
+        }
+        function checkPasswordStrength(pw) {
+            [{id:'pw-len',test:pw.length>=8},{id:'pw-lower',test:/[a-z]/.test(pw)},{id:'pw-upper',test:/[A-Z]/.test(pw)},{id:'pw-special',test:/[^a-zA-Z0-9]/.test(pw)}].forEach(r => {
+                const el = document.getElementById(r.id);
+                el.classList.toggle('pass', r.test); el.classList.toggle('fail', !r.test);
+                el.querySelector('i').className = r.test ? 'fas fa-check text-[8px]' : 'fas fa-circle text-[6px]';
+            });
+        }
+        function switchAuth(mode) {
+            document.getElementById('auth-message').classList.add('hidden');
+            ['form-login','form-signup','form-verify'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById('btn-auth-login').classList.remove('active');
+            document.getElementById('btn-auth-signup').classList.remove('active');
+            if (mode === 'login') { document.getElementById('form-login').classList.remove('hidden'); document.getElementById('btn-auth-login').classList.add('active'); }
+            else { document.getElementById('form-signup').classList.remove('hidden'); document.getElementById('btn-auth-signup').classList.add('active'); const pw = document.getElementById('signup-pass'); if (pw) checkPasswordStrength(pw.value); }
+        }
+        async function login() {
+            const user = document.getElementById('login-user').value, pass = document.getElementById('login-pass').value;
+            if (!user || !pass) { showMessage('Please enter username and password', true); return; }
+            try {
+                const res = await fetchAPI('/api/login', { method: 'POST', body: JSON.stringify({ username: user, password: pass }) });
+                const data = await res.json();
+                if (data.success) {
+                    authToken = data.token; currentUser = data.username; currentUserRole = data.role;
+                    document.getElementById('connectionOverlay').style.display = 'none';
+                    document.getElementById('display-username').innerText = currentUser + ' (' + currentUserRole + ')';
+                    if (currentUserRole === 'Admin') {
+                        document.getElementById('admin-nav-section').classList.remove('hidden');
+                    } else {
+                        document.getElementById('admin-nav-section').classList.add('hidden');
+                    }
+                    showTab('guide');
+                    fetchLogs(); fetchUserCount();
+                } else { showMessage('Login failed: ' + data.error, true); }
+            } catch(e) { showMessage('Connection to backend failed. Ensure Docker is running.', true); }
+        }
+        async function requestRegistration() {
+            const user = document.getElementById('signup-user').value, email = document.getElementById('signup-email').value, pass = document.getElementById('signup-pass').value;
+            if (!user || !pass || !email) { showMessage('Please fill all fields!', true); return; }
+            if (pass.length < 8) { showMessage('Password must be at least 8 characters.', true); return; }
+            if (!/[a-z]/.test(pass)) { showMessage('Password needs a lowercase letter.', true); return; }
+            if (!/[A-Z]/.test(pass)) { showMessage('Password needs an uppercase letter.', true); return; }
+            if (!/[^a-zA-Z0-9]/.test(pass)) { showMessage('Password needs a special character.', true); return; }
+            try {
+                const res = await fetchAPI('/api/register/init', { method: 'POST', body: JSON.stringify({ username: user, email: email, password: pass }) });
+                const data = await res.json();
+                if (res.ok) { showMessage('Verification code sent to your email!', false); document.getElementById('form-signup').classList.add('hidden'); document.getElementById('form-verify').classList.remove('hidden'); }
+                else { showMessage('Registration failed: ' + data.error, true); }
+            } catch(e) { showMessage('Backend connection failed.', true); }
+        }
+        async function verifyAndRegister() {
+            const email = document.getElementById('signup-email').value, code = document.getElementById('verify-code').value;
+            if (!code) { showMessage('Please enter the code', true); return; }
+            try {
+                const res = await fetchAPI('/api/register/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
+                const data = await res.json();
+                if (res.ok) { showMessage('Verified! You can now login.', false); setTimeout(() => switchAuth('login'), 2000); }
+                else { showMessage('Verification failed: ' + data.error, true); }
+            } catch(e) { showMessage('Backend connection failed.', true); }
+        }
+
+        /* Tabs */
+        function showTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tab).classList.remove('hidden');
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('btn-' + tab);
+            if (btn) btn.classList.add('active');
+            if (tab === 'users') fetchAdminUsers();
+        }
+
+        /* Export */
+        function exportReport(btn) {
+            const orig = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin text-rose-400 mr-1"></i> Exporting...'; btn.disabled = true;
+            const opt = { margin: 0.5, filename: 'SSEP_Report_' + Date.now() + '.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 1, useCORS: true }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
+            try { html2pdf().set(opt).from(document.getElementById('scan-results')).save().then(() => { btn.innerHTML = '<i class="fas fa-check text-emerald-400 mr-1"></i> Done!'; setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000); }).catch(() => { btn.innerHTML = orig; btn.disabled = false; }); } catch(e) { btn.innerHTML = orig; btn.disabled = false; }
+        }
+        function exportCSV() {
+            const table = document.getElementById("history-table"); let csv = '\uFEFF' + ["Attack ID","Attacker","Target","Attack Module","Severity","Timestamp"].join(",") + "\r\n";
+            for (let i = 1; i < table.rows.length; i++) {
+                const c = table.rows[i].querySelectorAll("td"); if (c.length < 5) continue;
+                const id=c[0].innerText.replace(/[\r\n#]/g,"").trim(), att=c[1].innerText.trim(), act=c[2].innerText.trim(), tgt=c[3].innerText.trim(), ts=c[4].innerText.trim();
+                let sev="Medium"; const al=act.toLowerCase();
+                if (al.includes("getsystem")||al.includes("hashdump")||al.includes("reverse_shell")||al.includes("persistence")) sev="Critical";
+                else if (al.includes("scan")&&!al.includes("keyscan")) sev="Info";
+                else if (al.includes("keyscan")||al.includes("screenshot")||al.includes("webcam")||al.includes("mic")||al.includes("download")||al.includes("screenshare")) sev="High";
+                csv += [id,att,tgt,act,sev,ts].map(v => '"'+v+'"').join(",") + "\r\n";
+            }
+            const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            const a = Object.assign(document.createElement("a"), { href: url, download: 'CVE_history_' + Date.now() + '.csv' });
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        }
+
+        /* API */
+        async function fetchUserCount() { try { const d = await (await fetch(API_BASE + '/api/users/count')).json(); document.getElementById('user-count-display').innerText = d.count; } catch(e) {} }
+        async function fetchOnlineUsers() { try { if (currentUser) { const d = await (await fetchAPI('/api/heartbeat', { method: 'POST', body: JSON.stringify({ username: currentUser }) })).json(); if (d.activeCount !== undefined) document.getElementById('online-count-display').innerText = d.activeCount; } } catch(e) {} }
+        setInterval(fetchOnlineUsers, 5000); setInterval(fetchUserCount, 15000);
+
+        async function runScan() {
+            const btn = document.getElementById('btn-run-scan'), orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...'; btn.disabled = true;
+            try { await fetchAPI('/api/attack', { method: 'POST', body: JSON.stringify({ attackType: 'web_scan', targetIp: document.getElementById('target-url').value }) }); } catch(e) {}
+            setTimeout(() => {
+                document.getElementById('scan-results').classList.remove('hidden');
+                btn.innerHTML = '<i class="fas fa-check"></i> Complete'; btn.classList.replace('bg-blue-600', 'bg-emerald-600'); btn.disabled = false; fetchLogs();
+                setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('bg-emerald-600', 'bg-blue-600'); }, 3000);
+            }, 1200);
+        }
+        async function runAttack(type) {
+            const at = type || document.getElementById('attack-type').value, ip = document.getElementById('target-ip-attack') ? document.getElementById('target-ip-attack').value : "192.168.105.70", t = document.getElementById('term');
+            const s = document.createElement('span'); s.className = 'text-slate-500'; s.textContent = '[*] Requesting module ' + at + '...'; t.appendChild(document.createElement('br')); t.appendChild(s); t.scrollTop = t.scrollHeight;
+            try {
+                const data = await (await fetchAPI('/api/attack', { method: 'POST', body: JSON.stringify({ attackType: at, targetIp: ip }) })).json();
+                const out = data.terminalOutput || ('[-] ERROR: ' + (data.error || 'Unknown'));
+                t.appendChild(document.createElement('br')); t.appendChild(document.createElement('br'));
+                const p = document.createElement('span'); p.className = 'text-white'; p.textContent = '> '; t.appendChild(p);
+                let i = 0; (function tw() { if (i < out.length) { out.charAt(i)==='\n' ? t.appendChild(document.createElement('br')) : t.appendChild(document.createTextNode(out.charAt(i))); i++; t.scrollTop = t.scrollHeight; setTimeout(tw, 10); } else fetchLogs(); })();
+            } catch(e) { t.appendChild(document.createElement('br')); const es = document.createElement('span'); es.className = 'text-rose-500'; es.textContent = '[-] Error: API Offline'; t.appendChild(es); }
+        }
+        async function fetchLogs() {
+            try {
+                const res = await fetchAPI('/api/history'); if (!res.ok) return; const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) document.getElementById('logs').innerHTML = data.map(r =>
+                    '<tr class="border-t border-slate-700/20 hover:bg-slate-800/30 transition">' +
+                    '<td class="py-2.5 px-4 text-slate-500">#' + escapeHtml(r.id) + '</td>' +
+                    '<td class="py-2.5 px-4 text-indigo-400 font-semibold">' + escapeHtml(r.username||'Unknown') + '</td>' +
+                    '<td class="py-2.5 px-4 font-semibold text-blue-400">' + escapeHtml(r.action) + '</td>' +
+                    '<td class="py-2.5 px-4 text-emerald-400">' + escapeHtml(r.target) + '</td>' +
+                    '<td class="py-2.5 px-4 text-slate-500">' + escapeHtml(new Date(r.executed_at).toLocaleString()) + '</td></tr>'
+                ).join('');
+            } catch(e) {}
+        }
+        /* Admin: User Management */
+        async function fetchAdminUsers() {
+            try {
+                const res = await fetchAPI('/api/admin/users');
+                if (!res.ok) { const d = await res.json(); console.error(d.error); return; }
+                const users = await res.json();
+                const tbody = document.getElementById('admin-users-body');
+                if (!users.length) { tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500">No users found.</td></tr>'; return; }
+                tbody.innerHTML = users.map(u => {
+                    const isSelf = u.username === currentUser;
+                    const roleBadge = u.role === 'Admin'
+                        ? '<span class="bg-orange-500/20 text-orange-300 border border-orange-500/30 px-2.5 py-0.5 rounded-md text-[10px] font-bold">Admin</span>'
+                        : '<span class="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded-md text-[10px] font-bold">SOC Analyst</span>';
+                    const actions = isSelf
+                        ? '<span class="text-[10px] text-slate-600 italic">Current user</span>'
+                        : `<div class="flex justify-center gap-1.5">
+                            <button onclick="toggleUserRole(${u.id}, '${u.role === 'Admin' ? 'SOC Analyst' : 'Admin'}')" title="${u.role === 'Admin' ? 'Demote to Analyst' : 'Promote to Admin'}" class="btn-action px-2.5 py-1.5 rounded-lg text-[10px] font-semibold ${u.role === 'Admin' ? 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border border-blue-500/20' : 'bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 border border-orange-500/20'}">
+                                <i class="fas fa-${u.role === 'Admin' ? 'arrow-down' : 'arrow-up'} mr-1"></i>${u.role === 'Admin' ? 'Demote' : 'Promote'}
+                            </button>
+                            <button onclick="openResetPassword(${u.id}, '${escapeHtml(u.username)}')" title="Reset password" class="btn-action bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border border-sky-500/20 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold">
+                                <i class="fas fa-key mr-1"></i>Reset PW
+                            </button>
+                            <button onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')" title="Delete user" class="btn-action bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/20 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold">
+                                <i class="fas fa-trash-can mr-1"></i>Delete
+                            </button>
+                        </div>`;
+                    return '<tr class="border-t border-slate-700/20 hover:bg-slate-800/30 transition">' +
+                        '<td class="py-3 px-4 text-slate-500">#' + escapeHtml(u.id) + '</td>' +
+                        '<td class="py-3 px-4 text-white font-semibold">' + escapeHtml(u.username) + '</td>' +
+                        '<td class="py-3 px-4 text-slate-400">' + escapeHtml(u.email) + '</td>' +
+                        '<td class="py-3 px-4">' + roleBadge + '</td>' +
+                        '<td class="py-3 px-4 text-slate-500">' + escapeHtml(new Date(u.created_at).toLocaleDateString()) + '</td>' +
+                        '<td class="py-3 px-4 text-center">' + actions + '</td></tr>';
+                }).join('');
+            } catch(e) { console.error('Failed to fetch users', e); }
+        }
+
+        async function toggleUserRole(userId, newRole) {
+            if (!confirm('Change this user\'s role to ' + newRole + '?')) return;
+            try {
+                const res = await fetchAPI('/api/admin/users/' + userId + '/role', {
+                    method: 'PUT', body: JSON.stringify({ role: newRole })
+                });
+                const data = await res.json();
+                if (res.ok) { fetchAdminUsers(); } else { alert('Error: ' + data.error); }
+            } catch(e) { alert('Failed to change role.'); }
+        }
+
+        function openResetPassword(userId, username) {
+            document.getElementById('reset-pw-user-id').value = userId;
+            document.getElementById('reset-pw-username').textContent = username;
+            document.getElementById('reset-pw-input').value = '';
+            document.getElementById('reset-pw-panel').classList.remove('hidden');
+            document.getElementById('reset-pw-panel').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function submitResetPassword() {
+            const userId = document.getElementById('reset-pw-user-id').value;
+            const pw = document.getElementById('reset-pw-input').value;
+            if (!pw) { alert('Please enter a new password.'); return; }
+            if (pw.length < 8) { alert('Password must be at least 8 characters.'); return; }
+            if (!/[a-z]/.test(pw)) { alert('Password needs a lowercase letter.'); return; }
+            if (!/[A-Z]/.test(pw)) { alert('Password needs an uppercase letter.'); return; }
+            if (!/[^a-zA-Z0-9]/.test(pw)) { alert('Password needs a special character.'); return; }
+            try {
+                const res = await fetchAPI('/api/admin/users/' + userId + '/password', {
+                    method: 'PUT', body: JSON.stringify({ newPassword: pw })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('reset-pw-panel').classList.add('hidden');
+                    alert('Password reset successfully.');
+                } else { alert('Error: ' + data.error); }
+            } catch(e) { alert('Failed to reset password.'); }
+        }
+
+        async function deleteUser(userId, username) {
+            if (!confirm('Permanently delete user "' + username + '"? This cannot be undone.')) return;
+            try {
+                const res = await fetchAPI('/api/admin/users/' + userId, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) { fetchAdminUsers(); fetchUserCount(); } else { alert('Error: ' + data.error); }
+            } catch(e) { alert('Failed to delete user.'); }
+        }
+    </script>
+</body>
+</html>
