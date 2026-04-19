@@ -66,6 +66,61 @@
 </head>
 <body class="text-slate-100 h-screen flex overflow-hidden">
 
+    <div id="landing-page" class="fixed inset-0 z-[100] bg-[#030712]/75 backdrop-blur-sm overflow-y-auto font-sans">
+
+        <div class="relative z-10 max-w-6xl mx-auto px-6 py-8">
+            <div class="flex justify-between items-center mb-12">
+                <div class="flex items-center gap-4">
+                    <img src="logo.gif" alt="Logo" class="w-40 h-40 drop-shadow-[0_0_35px_rgba(255,255,255,0.7)] object-contain">
+                    <span class="text-white font-bold text-3xl tracking-wider">MS-Platform</span>
+                </div>
+                <button onclick="document.getElementById('landing-page').style.display='none'" class="text-sm font-semibold text-white hover:text-blue-400 transition-colors flex items-center gap-2 bg-blue-600/20 px-4 py-2 rounded-lg border border-blue-500/30">
+                    Login Platform <i class="fas fa-sign-in-alt"></i>
+                </button>
+            </div>
+
+            <div class="text-center max-w-4xl mx-auto mb-16">
+
+                <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-6 tracking-tight leading-tight drop-shadow-lg">
+                    Welcome To MetaSploit Platform <br/>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Realistic Simulations</span>
+                </h1>
+                <p class="text-slate-300 text-lg mb-10 leading-relaxed max-w-2xl mx-auto font-medium">
+                    This educational platform integrates the powerful <strong>Metasploit Framework</strong> to demonstrate real cyber threats. Users can configure and launch authentic exploits and payloads against a safely isolated, <strong>containerized Docker instance</strong>, ensuring a 100% legal and risk-free learning environment.
+                </p>
+                
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold mb-4 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
+                    <i class="fas fa-graduation-cap text-base"></i> Educational Cyber Simulation
+                </div>
+                <br> 
+
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold mb-8 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                     <i class="fab fa-docker text-base"></i> Isolated Docker Target Machine
+                </div>
+                
+                <button onclick="document.getElementById('landing-page').style.display='none'" 
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-10 py-4 rounded-xl font-bold text-lg shadow-[0_0_30px_rgba(37,99,235,0.4)] transition-all transform hover:-translate-y-1 flex items-center justify-center mx-auto gap-4 leading-none border-none outline-none whitespace-nowrap">
+                    <span style="display: inline-block; vertical-align: middle;">Start Hacking</span>
+                    <i class="fas fa-sign-in-alt text-2xl" style="display: inline-flex; align-items: center; transform: translateY(1px);"></i>
+                </button>
+            </div>
+
+
+            <div class="bg-slate-900/80 border border-rose-900/50 rounded-2xl p-5 text-center backdrop-blur-md max-w-3xl mx-auto shadow-lg">
+                <p class="text-slate-300 text-sm">
+                    <i class="fas fa-shield-halved text-emerald-400 mr-2 text-lg"></i> <strong>RBAC Security Enforced:</strong> Modules 6 & 7 (System Control) are locked for standard analysts to prevent unauthorized privilege escalation. Admin clearance is required.
+                </p>
+            </div>
+            
+        </div>
+    </div>
+    
+    <script>
+        if (localStorage.getItem('authToken') || sessionStorage.getItem('authToken')) {
+            const lp = document.getElementById('landing-page');
+            if (lp) lp.style.display = 'none';
+        }
+    </script>
     <canvas id="matrix-bg"></canvas>
 
     <div id="connectionOverlay" class="absolute inset-0 bg-black/70 z-50 flex items-center justify-center backdrop-blur-sm">
@@ -99,6 +154,12 @@
                     <div class="flex justify-end mt-2">
                         <button onclick="switchAuth('forgot')" class="text-[10px] text-slate-500 hover:text-blue-400 transition-colors">Forgot password?</button>
                     </div>
+                    
+                    <div class="flex items-center gap-2 mt-3 mb-1">
+                        <input type="checkbox" id="remember-me" class="rounded border-slate-700 bg-slate-900 accent-blue-600 cursor-pointer">
+                        <label for="remember-me" class="text-[11px] text-slate-400 cursor-pointer select-none">Remember me</label>
+                    </div>
+
                     <button onclick="login()" class="auth-btn-primary w-full mt-6"><i class="fas fa-sign-in-alt mr-2"></i>Connect</button>
                 </div>
 
@@ -223,11 +284,15 @@
                 <span class="text-[11px] text-slate-500"><i class="fas fa-circle text-emerald-400 mr-1.5 text-[7px] animate-pulse"></i>Online</span>
                 <span id="online-count-display" class="text-[11px] font-bold text-white bg-emerald-500/20 px-2 py-0.5 rounded-md">0</span>
             </div>
-            <div class="flex items-center gap-2 mt-3 bg-slate-800/40 rounded-lg px-3 py-2">
-                <div class="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center">
+            
+            <div class="flex items-center gap-2 mt-3 bg-slate-800/40 rounded-lg px-3 py-2 group">
+                <div class="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
                     <i class="fas fa-user text-blue-400 text-[9px]"></i>
                 </div>
-                <span id="display-username" class="text-[11px] font-semibold text-slate-200 truncate">Guest</span>
+                <span id="display-username" class="text-[11px] font-semibold text-slate-200 truncate flex-1">Guest</span>
+                <button onclick="logout()" class="text-slate-500 hover:text-rose-400 transition-colors p-1" title="Logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
             </div>
         </div>
     </aside>
@@ -575,7 +640,7 @@
             <div class="flex justify-between items-center mb-4 shrink-0">
                 <h3 class="text-sm font-bold text-slate-300"><i class="fas fa-clock-rotate-left text-blue-400 mr-2"></i>Live Audit History</h3>
                 <div class="flex gap-2">
-                    <button onclick="fetchLogs()" class="btn-action text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-600/40 text-slate-300 px-3 py-1.5 rounded-lg"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
+                    <button onclick="fetchLogs()" class="btn-action text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-600/40 text-slate-300 px-3.5 py-1.5 rounded-lg"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
                     <button onclick="exportCSV()" class="btn-action text-[11px] bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold px-3 py-1.5 rounded-lg"><i class="fas fa-file-csv mr-1"></i>Export CSV</button>
                 </div>
             </div>
@@ -639,7 +704,7 @@
         /* Auth */
         let currentUserRole = 'Analyst';
         let currentUser = null;
-        let resetEmail = ""; // Stores email during forgot password flow
+        let resetEmail = ""; 
 
         function showMessage(text, isError) {
             const m = document.getElementById('auth-message');
@@ -699,6 +764,12 @@
                 const data = await res.json();
                 if (data.success) {
                     authToken = data.token; currentUser = data.username; currentUserRole = data.role;
+                    
+                    const storage = document.getElementById('remember-me').checked ? localStorage : sessionStorage;
+                    storage.setItem('authToken', authToken);
+                    storage.setItem('currentUser', currentUser);
+                    storage.setItem('currentUserRole', currentUserRole);
+
                     document.getElementById('connectionOverlay').style.display = 'none';
                     document.getElementById('display-username').innerText = currentUser + ' (' + currentUserRole + ')';
                     if (currentUserRole === 'Admin') {
@@ -711,6 +782,24 @@
                 } else { showMessage('Login failed: ' + data.error, true); }
             } catch(e) { showMessage('Connection to backend failed. Ensure Docker is running.', true); }
         }
+
+        /* --- פונקציית ההתנתקות החדשה --- */
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('currentUserRole');
+            sessionStorage.removeItem('authToken');
+            sessionStorage.removeItem('currentUser');
+            sessionStorage.removeItem('currentUserRole');
+            
+            authToken = null;
+            currentUser = null;
+            
+            document.getElementById('connectionOverlay').style.display = 'flex';
+            document.getElementById('login-pass').value = ''; // מאפס את שדה הסיסמה
+            switchAuth('login');
+        }
+        /* ------------------------------- */
 
         async function requestRegistration() {
             const user = document.getElementById('signup-user').value, email = document.getElementById('signup-email').value, pass = document.getElementById('signup-pass').value;
@@ -827,7 +916,13 @@
                 setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('bg-emerald-600', 'bg-blue-600'); }, 3000);
             }, 1200);
         }
+        
+        let isTyping = false;
+
         async function runAttack(type) {
+            if (isTyping) return;
+            isTyping = true;
+
             const at = type || document.getElementById('attack-type').value, ip = document.getElementById('target-ip-attack') ? document.getElementById('target-ip-attack').value : "192.168.105.70", t = document.getElementById('term');
             const s = document.createElement('span'); s.className = 'text-slate-500'; s.textContent = '[*] Requesting module ' + at + '...'; t.appendChild(document.createElement('br')); t.appendChild(s); t.scrollTop = t.scrollHeight;
             try {
@@ -835,9 +930,23 @@
                 const out = data.terminalOutput || ('[-] ERROR: ' + (data.error || 'Unknown'));
                 t.appendChild(document.createElement('br')); t.appendChild(document.createElement('br'));
                 const p = document.createElement('span'); p.className = 'text-white'; p.textContent = '> '; t.appendChild(p);
-                let i = 0; (function tw() { if (i < out.length) { out.charAt(i)==='\n' ? t.appendChild(document.createElement('br')) : t.appendChild(document.createTextNode(out.charAt(i))); i++; t.scrollTop = t.scrollHeight; setTimeout(tw, 10); } else fetchLogs(); })();
-            } catch(e) { t.appendChild(document.createElement('br')); const es = document.createElement('span'); es.className = 'text-rose-500'; es.textContent = '[-] Error: API Offline'; t.appendChild(es); }
+                let i = 0; (function tw() { 
+                    if (i < out.length) { 
+                        out.charAt(i)==='\n' ? t.appendChild(document.createElement('br')) : t.appendChild(document.createTextNode(out.charAt(i))); 
+                        i++; 
+                        t.scrollTop = t.scrollHeight; 
+                        setTimeout(tw, 10); 
+                    } else { 
+                        fetchLogs(); 
+                        isTyping = false; 
+                    } 
+                })();
+            } catch(e) { 
+                t.appendChild(document.createElement('br')); const es = document.createElement('span'); es.className = 'text-rose-500'; es.textContent = '[-] Error: API Offline'; t.appendChild(es); 
+                isTyping = false; 
+            }
         }
+        
         async function fetchLogs() {
             try {
                 const res = await fetchAPI('/api/history'); if (!res.ok) return; const data = await res.json();
@@ -935,6 +1044,31 @@
                 if (res.ok) { fetchAdminUsers(); fetchUserCount(); } else { alert('Error: ' + data.error); }
             } catch(e) { alert('Failed to delete user.'); }
         }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+            const savedUser = localStorage.getItem('currentUser') || sessionStorage.getItem('currentUser');
+            const savedRole = localStorage.getItem('currentUserRole') || sessionStorage.getItem('currentUserRole');
+
+            if (savedToken && savedUser && savedRole) {
+                authToken = savedToken;
+                currentUser = savedUser;
+                currentUserRole = savedRole;
+                
+                document.getElementById('connectionOverlay').style.display = 'none';
+                document.getElementById('display-username').innerText = currentUser + ' (' + currentUserRole + ')';
+                
+                if (currentUserRole === 'Admin') {
+                    document.getElementById('admin-nav-section').classList.remove('hidden');
+                } else {
+                    document.getElementById('admin-nav-section').classList.add('hidden');
+                }
+                
+                showTab('guide');
+                fetchLogs(); 
+                fetchUserCount();
+            }
+        });
     </script>
 </body>
 </html>

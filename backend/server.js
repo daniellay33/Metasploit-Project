@@ -247,6 +247,87 @@ app.post('/api/register/verify', async (req, res) => {
     }
 });
 
+// --- NEW: FORGOT PASSWORD ENDPOINTS ---
+
+app.post('/api/forgot-password/init', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required." });
+
+    try {
+        const result = await pool.query('SELECT username FROM users WHERE email = $1', [email]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "No account found with this email." });
+        }
+
+        const username = result.rows[0].username;
+        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        pendingVerifications.set(email, {
+            email,
+            code: resetCode,
+            createdAt: Date.now(),
+            attempts: 0,
+            type: 'password_reset'
+        });
+
+        const mailOptions = {
+            from: `"MS Platform Security" <${process.env.MAIL_USER || 'no-reply@msfcloud.com'}>`,
+            to: email,
+            subject: 'MS Platform - Password Reset Code',
+            text: `Hello ${username},\n\nYour password reset code is: ${resetCode}\n\nThis code expires in 10 minutes.`
+        };
+
+        try {
+            await transporter.sendMail(mailOptions);
+            res.json({ message: "Reset code sent." });
+        } catch {
+            console.log(`[FALLBACK] Reset code for ${email}: ${resetCode}`);
+            res.json({ message: "Code generated. Check server logs if email delivery fails." });
+        }
+    } catch (e) {
+        res.status(500).json({ error: "Server error during reset initialization." });
+    }
+});
+
+app.post('/api/forgot-password/verify', async (req, res) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) return res.status(400).json({ error: "All fields are required." });
+
+    const pwError = validatePassword(newPassword);
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    const pending = pendingVerifications.get(email);
+    if (!pending || pending.type !== 'password_reset') {
+        return res.status(400).json({ error: "No pending reset request." });
+    }
+
+    if (Date.now() - pending.createdAt > VERIFICATION_TTL_MS) {
+        pendingVerifications.delete(email);
+        return res.status(400).json({ error: "Reset code expired." });
+    }
+
+    if (pending.code !== code) {
+        pending.attempts++;
+        if (pending.attempts >= MAX_VERIFY_ATTEMPTS) {
+            pendingVerifications.delete(email);
+            return res.status(429).json({ error: "Too many attempts. Request a new code." });
+        }
+        return res.status(400).json({ error: "Invalid reset code." });
+    }
+
+    try {
+        const salt = await bcrypt.genSalt(12);
+        const hash = await bcrypt.hash(newPassword, salt);
+        await pool.query('UPDATE users SET password = $1 WHERE email = $2', [hash, email]);
+        pendingVerifications.delete(email);
+        res.json({ success: true, message: "Password updated successfully." });
+    } catch (e) {
+        res.status(500).json({ error: "Database error during password update." });
+    }
+});
+
+// --- END NEW ENDPOINTS ---
+
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
 
@@ -300,7 +381,6 @@ app.post('/api/heartbeat', (req, res) => {
     res.json({ activeCount: activeUsers.size });
 });
 
-// החזרנו לכאן את כל הרשימה המלאה שלך שהייתה חסרה!!!
 const simulatedOutputs = {
     'keyscan': () => `meterpreter > keyscan_start\n[*] Starting the keystroke sniffer...\n[*] Capturing data packets...\n[CAPTURED]: admin_portal / SecretAdminPass1!`,
     'screenshot': (target) => `meterpreter > screenshot\n[*] Taking screenshot of desktop...\n[+] Captured screen from ${target}\n[+] Saved to /app/loot/intel_capture_${Date.now()}.jpg`,
