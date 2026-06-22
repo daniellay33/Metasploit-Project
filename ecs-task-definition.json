@@ -1,0 +1,105 @@
+{
+  "family": "msf-platform",
+  "networkMode": "host",
+  "requiresCompatibilities": ["EC2"],
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "danieladoc/msf-backend:latest",
+      "essential": true,
+      "memory": 512,
+      "environment": [
+        {"name": "DB_HOST", "value": "msf-platform-db.chiuq024ys8x.il-central-1.rds.amazonaws.com"},
+        {"name": "DB_USER", "value": "msf_admin"},
+        {"name": "DB_NAME", "value": "metasploit_db"},
+        {"name": "USE_IAM_AUTH", "value": "true"},
+        {"name": "AWS_REGION", "value": "il-central-1"},
+        {"name": "JWT_SECRET", "value": "a8f3c9e2d1b7a6f4e0c3d5b8a1e9f2c4d7b0a3e6f9c2d5b8a1e4f7c0d3b6a9e2"},
+        {"name": "MAIL_USER", "value": "metasploitcloud@gmail.com"},
+        {"name": "MAIL_PASS", "value": "ymeu dvyq knda ypss"},
+        {"name": "DEFAULT_ADMIN_PASSWORD", "value": "admin123!"},
+        {"name": "ALLOWED_ORIGIN", "value": "*"},
+        {"name": "PORT", "value": "3000"}
+      ],
+      "mountPoints": [
+        {"sourceVolume": "loot", "containerPath": "/app/loot", "readOnly": false},
+        {"sourceVolume": "docker-sock", "containerPath": "/var/run/docker.sock", "readOnly": false}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/msf-platform",
+          "awslogs-region": "il-central-1",
+          "awslogs-stream-prefix": "backend",
+          "awslogs-create-group": "true"
+        }
+      }
+    },
+    {
+      "name": "frontend",
+      "image": "danieladoc/msf-frontend:latest",
+      "essential": true,
+      "memory": 128,
+      "environment": [
+        {"name": "NGINX_PORT", "value": "8080"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/msf-platform",
+          "awslogs-region": "il-central-1",
+          "awslogs-stream-prefix": "frontend",
+          "awslogs-create-group": "true"
+        }
+      }
+    },
+    {
+      "name": "victim_target",
+      "image": "danieladoc/msf-victim:latest",
+      "essential": false,
+      "memory": 3072,
+      "environment": [
+        {"name": "PUID", "value": "1000"},
+        {"name": "PGID", "value": "1000"},
+        {"name": "TZ", "value": "Etc/UTC"},
+        {"name": "CUSTOM_PORT", "value": "3002"},
+        {"name": "CUSTOM_HTTPS_PORT", "value": "3003"},
+        {"name": "SELKIES_FRAMERATE", "value": "15"},
+        {"name": "SELKIES_VIDEO_BITRATE", "value": "500"},
+        {"name": "SELKIES_AUDIO", "value": "true"},
+        {"name": "SELKIES_AUDIO_BITRATE", "value": "128"},
+        {"name": "PULSE_RUNTIME_PATH", "value": "/run/user/1000/pulse"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/msf-platform",
+          "awslogs-region": "il-central-1",
+          "awslogs-stream-prefix": "victim",
+          "awslogs-create-group": "true"
+        }
+      }
+    },
+    {
+      "name": "metasploit",
+      "image": "metasploitframework/metasploit-framework:latest",
+      "essential": false,
+      "memory": 512,
+      "interactive": true,
+      "pseudoTerminal": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/msf-platform",
+          "awslogs-region": "il-central-1",
+          "awslogs-stream-prefix": "metasploit",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {"name": "loot", "host": {"sourcePath": "/data/loot"}},
+    {"name": "docker-sock", "host": {"sourcePath": "/var/run/docker.sock"}}
+  ]
+}

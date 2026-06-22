@@ -12,7 +12,7 @@ services:
       - msf_network
 
   backend:
-    build: ./backend
+    image: danieladoc/msf-backend:latest
     ports:
       - "3000:3000"
     volumes:
@@ -61,7 +61,7 @@ services:
       - msf_network
 
   target_machine:
-    image: linuxserver/webtop:ubuntu-xfce
+    image: danieladoc/msf-victim:latest
     container_name: victim_target
     environment:
       - PUID=1000

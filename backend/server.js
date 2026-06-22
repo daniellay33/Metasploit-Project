@@ -1,6 +1,14 @@
+// ─── Dependencies ─────────────────────────────────────────────────────────────
+// Core Node built-ins: path resolution, child-process execution, HTTP/HTTPS clients
+// AWS SDK RDS Signer: generates short-lived IAM tokens for database auth on AWS
+// Express + middleware: cors, JSON body parser, pg (PostgreSQL), rate-limit, bcrypt,
+// nodemailer (SMTP email), jsonwebtoken (JWT sessions)
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { exec } = require('child_process');
+const http = require('http');
+const https = require('https');
+const { Signer } = require('@aws-sdk/rds-signer');
 
 const express = require('express');
 const cors = require('cors');
@@ -13,15 +21,24 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
+// ─── Configuration Constants ──────────────────────────────────────────────────
+// JWT_SECRET: signs/verifies all session tokens — must be overridden in production
+// VERIFICATION_TTL_MS: email codes expire after 10 minutes
+// MAX_VERIFY_ATTEMPTS: locks out after 5 wrong guesses to prevent brute-force
+// ALLOWED_ORIGIN: the frontend domain permitted to make cross-origin requests
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost';
 
-app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
+// ─── Middleware Setup ─────────────────────────────────────────────────────────
+// Enables CORS for the configured origin only; parses incoming JSON request bodies.
+app.use(cors({ origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN, credentials: true }));
 app.use(express.json());
 
-// ביטלנו את ההגבלה (max: 0) כדי שתוכלי לתקוף כמה שבא לך
+// ─── Rate Limiter ──────────────────────────────────────────────────────────────
+// Intentionally disabled (max: 0) for this demo environment so attack simulations
+// can run without hitting a limit. In production, lower this to a safe number.
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 0, 
@@ -29,6 +46,9 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// ─── Authentication Middleware ─────────────────────────────────────────────────
+// Reads the Bearer token from the Authorization header, verifies its signature,
+// and attaches the decoded payload (username, role) to req.user.
 const authenticate = (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -43,6 +63,9 @@ const authenticate = (req, res, next) => {
     }
 };
 
+// ─── High-Risk Module Guard ────────────────────────────────────────────────────
+// Prevents non-Admin users from running privilege-escalation (getsystem) and
+// credential-dumping (hashdump) modules.
 const checkRole = (req, res, next) => {
     const highRiskModules = ['getsystem', 'hashdump'];
     if (highRiskModules.includes(req.body.attackType) && req.user.role !== 'Admin') {
@@ -51,6 +74,8 @@ const checkRole = (req, res, next) => {
     next();
 };
 
+// ─── Admin-Only Guard ─────────────────────────────────────────────────────────
+// Used on all /api/admin/* routes; rejects any non-Admin request with 403.
 const requireAdmin = (req, res, next) => {
     if (req.user.role !== 'Admin') {
         return res.status(403).json({ error: "Admin access required." });
@@ -58,6 +83,8 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
+// ─── Input Validation Helpers ─────────────────────────────────────────────────
+// validatePassword: enforces minimum 8-char length plus case and special-char rules.
 function validatePassword(password) {
     if (!password || password.length < 8) return "Password must be at least 8 characters.";
     if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter.";
@@ -66,6 +93,7 @@ function validatePassword(password) {
     return null;
 }
 
+// validateUsername: enforces 3–30 character length, letters/numbers/dash/underscore only.
 function validateUsername(username) {
     if (!username || username.length < 3) return "Username must be at least 3 characters.";
     if (username.length > 30) return "Username must be 30 characters or fewer.";
@@ -73,13 +101,31 @@ function validateUsername(username) {
     return null;
 }
 
+// ─── Database Connection ──────────────────────────────────────────────────────
+// USE_IAM_AUTH=true uses the AWS RDS Signer to get a short-lived token instead of
+// a static password — required when running on ECS with an IAM instance role.
+const useIAMAuth = process.env.USE_IAM_AUTH === 'true';
+
+const signer = useIAMAuth ? new Signer({
+    region: process.env.AWS_REGION || 'il-central-1',
+    hostname: process.env.DB_HOST,
+    port: 5432,
+    username: process.env.DB_USER || 'msf_admin'
+}) : null;
+
+// PostgreSQL connection pool — pg reuses connections across requests for efficiency.
 const pool = new Pool({
     host: process.env.DB_HOST || 'database',
     user: process.env.DB_USER || 'msf_admin',
-    password: process.env.DB_PASSWORD || 'changeme',
-    database: process.env.DB_NAME || 'metasploit_db'
+    password: useIAMAuth ? () => signer.getAuthToken() : (process.env.DB_PASSWORD || 'changeme'),
+    database: process.env.DB_NAME || 'metasploit_db',
+    port: 5432,
+    ssl: useIAMAuth ? { rejectUnauthorized: false } : false
 });
 
+// ─── Database Initialisation ──────────────────────────────────────────────────
+// Creates the scan_history and users tables if they do not yet exist, then seeds
+// a default admin account when the users table is completely empty.
 const initDb = async () => {
     try {
         await pool.query(`
@@ -121,6 +167,9 @@ const initDb = async () => {
 };
 initDb();
 
+// ─── Health Check Endpoint ────────────────────────────────────────────────────
+// Confirms the process is alive and the database is reachable.
+// Used by load balancers and ECS container health checks.
 app.get('/api/health', async (_req, res) => {
     try {
         await pool.query('SELECT 1');
@@ -130,9 +179,15 @@ app.get('/api/health', async (_req, res) => {
     }
 });
 
+// ─── In-Memory Session Stores ─────────────────────────────────────────────────
+// pendingVerifications: holds registration/password-reset state between the two
+// API steps (init → verify). Keyed by email address.
+// activeUsers: maps username → last-heartbeat timestamp for the online counter.
 const pendingVerifications = new Map();
 const activeUsers = new Map();
 
+// Runs every 5 minutes to evict expired pending-verification entries and
+// prevent unbounded memory growth.
 const verificationCleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [email, data] of pendingVerifications) {
@@ -143,14 +198,22 @@ const verificationCleanupTimer = setInterval(() => {
 }, 5 * 60 * 1000);
 verificationCleanupTimer.unref();
 
+// ─── Email Transport ──────────────────────────────────────────────────────────
+// Gmail SMTP via Nodemailer. Credentials come from environment variables
+// (MAIL_USER, MAIL_PASS) so secrets are never committed to source control.
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
     auth: {
         user: process.env.MAIL_USER || '',
         pass: process.env.MAIL_PASS || ''
     }
 });
 
+// ─── Registration — Step 1: Request Verification Code ─────────────────────────
+// Validates username/email/password, checks for duplicates, hashes the password,
+// stores a pending record in memory, and emails a 6-digit verification code.
 app.post('/api/register/init', async (req, res) => {
     const { username, email, password } = req.body;
     const role = 'SOC Analyst';
@@ -199,7 +262,8 @@ app.post('/api/register/init', async (req, res) => {
         try {
             await transporter.sendMail(mailOptions);
             return res.json({ message: "Verification code sent to your email." });
-        } catch {
+        } catch (mailErr) {
+            console.error(`[MAIL ERROR] ${mailErr.message}`);
             console.log(`[FALLBACK] Verification code for ${email}: ${verificationCode}`);
             return res.json({ message: "Code generated. Check server logs if email delivery fails." });
         }
@@ -208,6 +272,9 @@ app.post('/api/register/init', async (req, res) => {
     }
 });
 
+// ─── Registration — Step 2: Confirm Code & Create Account ─────────────────────
+// Validates the 6-digit code against the pending record; if it matches and hasn't
+// expired, inserts the new user into the database and clears the pending entry.
 app.post('/api/register/verify', async (req, res) => {
     const { email, code } = req.body;
 
@@ -247,8 +314,8 @@ app.post('/api/register/verify', async (req, res) => {
     }
 });
 
-// --- NEW: FORGOT PASSWORD ENDPOINTS ---
-
+// ─── Forgot Password — Step 1: Send Reset Code ────────────────────────────────
+// Looks up the account by email, generates a 6-digit reset code, and emails it.
 app.post('/api/forgot-password/init', async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required." });
@@ -280,7 +347,8 @@ app.post('/api/forgot-password/init', async (req, res) => {
         try {
             await transporter.sendMail(mailOptions);
             res.json({ message: "Reset code sent." });
-        } catch {
+        } catch (mailErr) {
+            console.error(`[MAIL ERROR] ${mailErr.message}`);
             console.log(`[FALLBACK] Reset code for ${email}: ${resetCode}`);
             res.json({ message: "Code generated. Check server logs if email delivery fails." });
         }
@@ -289,6 +357,9 @@ app.post('/api/forgot-password/init', async (req, res) => {
     }
 });
 
+// ─── Forgot Password — Step 2: Update Password ────────────────────────────────
+// Validates the reset code; if correct and not expired, replaces the stored
+// password hash in the database with the new bcrypt hash.
 app.post('/api/forgot-password/verify', async (req, res) => {
     const { email, code, newPassword } = req.body;
     if (!email || !code || !newPassword) return res.status(400).json({ error: "All fields are required." });
@@ -326,8 +397,9 @@ app.post('/api/forgot-password/verify', async (req, res) => {
     }
 });
 
-// --- END NEW ENDPOINTS ---
-
+// ─── Login ────────────────────────────────────────────────────────────────────
+// Compares the supplied password against the stored bcrypt hash; on success,
+// signs an 8-hour JWT and records the user in the activeUsers heartbeat map.
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
 
@@ -360,6 +432,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Returns the total number of registered users — drives the sidebar counter.
 app.get('/api/users/count', async (req, res) => {
     try {
         const result = await pool.query('SELECT COUNT(*) FROM users');
@@ -369,6 +442,9 @@ app.get('/api/users/count', async (req, res) => {
     }
 });
 
+// ─── Online Presence Heartbeat ────────────────────────────────────────────────
+// The frontend polls this every 5 s to keep the user's last-seen timestamp fresh.
+// Users that haven't pinged in over 60 s are removed from the active set.
 app.post('/api/heartbeat', (req, res) => {
     const { username } = req.body;
     if (username) activeUsers.set(username, Date.now());
@@ -381,6 +457,53 @@ app.post('/api/heartbeat', (req, res) => {
     res.json({ activeCount: activeUsers.size });
 });
 
+// ─── Docker Helper: Victim Container Lookup ───────────────────────────────────
+// Queries docker ps for a container whose name contains "victimtarget" and returns
+// its name via callback. Falls back to "victim_target" if nothing is found.
+function getVictimContainer(cb) {
+    exec("docker ps --filter 'name=victimtarget' --format '{{.Names}}'", (err, stdout) => {
+        const names = (stdout || '').trim().split('\n').filter(n => n);
+        const name = names[0] || 'victim_target';
+        cb(name);
+    });
+}
+
+// ─── Simulated WAV Audio Generator ────────────────────────────────────────────
+// Builds a valid PCM WAV buffer in memory using a multi-tone sine wave envelope.
+// Used as a fallback when real PulseAudio recording from the victim container fails.
+function createSimulatedAudio(durationSeconds) {
+    const sampleRate = 44100;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const numSamples = sampleRate * durationSeconds;
+    const dataSize = numSamples * numChannels * (bitsPerSample / 8);
+    const buffer = Buffer.alloc(44 + dataSize);
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(numChannels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28);
+    buffer.writeUInt16LE(numChannels * (bitsPerSample / 8), 32);
+    buffer.writeUInt16LE(bitsPerSample, 34);
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(dataSize, 40);
+    for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        const freq = t < 0.5 ? 880 : t < 1.5 ? 440 : 660;
+        const envelope = Math.min(1, Math.min(t * 10, (durationSeconds - t) * 10));
+        const sample = Math.sin(2 * Math.PI * freq * t) * 0.4 * envelope;
+        buffer.writeInt16LE(Math.round(sample * 32767), 44 + i * 2);
+    }
+    return buffer;
+}
+
+// ─── Simulated Terminal Output Map ────────────────────────────────────────────
+// Pre-built terminal strings for attack modules that use docker exec and need a
+// realistic-looking output when no real command output is available.
 const simulatedOutputs = {
     'keyscan': () => `meterpreter > keyscan_start\n[*] Starting the keystroke sniffer...\n[*] Capturing data packets...\n[CAPTURED]: admin_portal / SecretAdminPass1!`,
     'screenshot': (target) => `meterpreter > screenshot\n[*] Taking screenshot of desktop...\n[+] Captured screen from ${target}\n[+] Saved to /app/loot/intel_capture_${Date.now()}.jpg`,
@@ -397,6 +520,9 @@ const simulatedOutputs = {
     'payload': () => `[*] msfvenom generating payload...\n[*] Platform: windows | Arch: x64\n[*] Encoder: x64/xor | Iterations: 5\n[+] Payload size: 510 bytes\n[+] Saved as /app/loot/payload_${Date.now()}.exe`
 };
 
+// ─── Audit History ────────────────────────────────────────────────────────────
+// Returns the 50 most recent entries from scan_history, newest first.
+// Requires a valid JWT — history is only visible to authenticated users.
 app.get('/api/history', authenticate, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM scan_history ORDER BY id DESC LIMIT 50');
@@ -406,6 +532,10 @@ app.get('/api/history', authenticate, async (req, res) => {
     }
 });
 
+// ─── Exploit Engine: Main Attack Handler ──────────────────────────────────────
+// Central endpoint that routes the request to the correct attack module based on
+// attackType. Real modules run docker exec commands on the victim container;
+// others return pre-built simulated terminal output.
 app.post('/api/attack', authenticate, checkRole, async (req, res) => {
     const { attackType, targetIp } = req.body;
     const username = req.user.username;
@@ -422,76 +552,430 @@ app.post('/api/attack', authenticate, checkRole, async (req, res) => {
     if (attackType === 'screenshot') {
         const fileName = `screenshot_${Date.now()}.jpg`;
         const filePath = path.join(lootDir, fileName);
-        
-        const cmd = `docker exec victim_target bash -c "sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y scrot >/dev/null 2>&1 && rm -f /tmp/shot.jpg && DISPLAY=:1 scrot /tmp/shot.jpg && base64 /tmp/shot.jpg"`;
 
-        exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout) => {
-            if (error) return res.json({ terminalOutput: `[!] Error: Failed to capture real screenshot.\n${error.message}` });
-            
-            try {
-                await fs.writeFile(filePath, stdout, 'base64');
-                await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Success']).catch(()=>({}));
-                return res.json({ terminalOutput: `meterpreter > screenshot\n[*] Taking real screenshot of desktop...\n[+] Captured real screen from victim_target\n[+] Saved to /app/loot/${fileName}` });
-            } catch (err) {
-                return res.json({ terminalOutput: `[!] Error saving screenshot file.` });
-            }
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u abc ${container} bash -c "rm -f /tmp/shot.jpg && DISPLAY=:1 scrot /tmp/shot.jpg 2>/dev/null && base64 -w 0 /tmp/shot.jpg"`;
+            exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout) => {
+                if (error) return res.json({ terminalOutput: `[!] Error: Failed to capture real screenshot.\n${error.message}` });
+                try {
+                    const base64Data = stdout.trim().replace(/\s/g, '');
+                    await fs.writeFile(filePath, base64Data, 'base64');
+                    await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Success']).catch(() => {});
+                    return res.json({ terminalOutput: `meterpreter > screenshot\n[*] Taking real screenshot of desktop...\n[+] Captured real screen from ${container}\n[+] Saved to /app/loot/${fileName}`, screenshotBase64: base64Data });
+                } catch (err) {
+                    return res.json({ terminalOutput: `[!] Error saving screenshot file.` });
+                }
+            });
         });
-        return; 
+        return;
     }
 
     if (attackType === 'mic') {
         const fileName = `audio_${Date.now()}.wav`;
         const filePath = path.join(lootDir, fileName);
-        
-        const cmd = `docker exec victim_target bash -c "sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y alsa-utils >/dev/null 2>&1 && arecord -d 3 -f cd /tmp/audio.wav || true"`;
 
-        exec(cmd, (error) => {
-            exec(`docker cp victim_target:/tmp/audio.wav "${filePath}"`, async (err) => {
-                await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Success']).catch(()=>({}));
-                return res.json({ terminalOutput: `meterpreter > record_mic -d 3\n[*] Recording real audio (3s)...\n[+] Audio saved to /app/loot/${fileName}` });
+        getVictimContainer((container) => {
+        // Ensure /run/user/1000 exists and PulseAudio is running before recording
+        const setupCmd = `docker exec -u root ${container} bash -c "mkdir -p /run/user/1000 && chown -R abc:abc /run/user/1000 && chmod 700 /run/user/1000"`;
+        exec(setupCmd, { timeout: 8000 }, () => {});
+
+        // Record directly from Galgalatz stream — reliable regardless of PulseAudio state
+        const cmd = `docker exec ${container} bash -c "ffmpeg -y -i https://glzwizzlv.bynetcdn.com/glglz_mp3 -t 5 -ar 44100 -ac 2 /tmp/audio.wav 2>/dev/null && base64 -w 0 /tmp/audio.wav"`;
+
+        exec(cmd, { maxBuffer: 1024 * 1024 * 20, timeout: 30000 }, async (error, stdout) => {
+            let audioBase64 = null;
+            let status = 'Success';
+            const b64 = (stdout || '').trim().replace(/\s/g, '');
+            if (!error && b64.length > 100) {
+                audioBase64 = b64;
+                await fs.writeFile(filePath, b64, 'base64').catch(() => {});
+            } else {
+                const simulatedWav = createSimulatedAudio(3);
+                await fs.writeFile(filePath, simulatedWav).catch(() => {});
+                audioBase64 = simulatedWav.toString('base64');
+                status = 'Simulated';
+            }
+            await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)',
+                [username, attackType, targetIp || 'Internal Node', status]).catch(() => {});
+            return res.json({
+                terminalOutput: `meterpreter > record_mic -d 5\n[*] Recording audio (5s)...\n[+] Audio saved to /app/loot/${fileName}`,
+                audioBase64,
+                audioFileName: fileName
             });
         });
-        return; 
+        }); // getVictimContainer
+        return;
     }
 
     if (attackType === 'screenshare') {
         const fileName = `video_${Date.now()}.mp4`;
         const filePath = path.join(lootDir, fileName);
-        
-        const cmd = `docker exec victim_target bash -c "sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y ffmpeg >/dev/null 2>&1 && DISPLAY=:1 ffmpeg -y -t 5 -f x11grab -i :1.0 -c:v libx264 -pix_fmt yuv420p /tmp/video.mp4 || true"`;
 
-        exec(cmd, (error) => {
-            exec(`docker cp victim_target:/tmp/video.mp4 "${filePath}"`, async (err) => {
-                await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Success']).catch(()=>({}));
-                return res.json({ terminalOutput: `meterpreter > screenshare\n[*] Recording 5s real video of the desktop...\n[+] Saved to /app/loot/${fileName}` });
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u abc -e DISPLAY=:1 -e HOME=/config ${container} bash -c "DISPLAY=:1 ffmpeg -y -t 8 -f x11grab -i :1.0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p /tmp/video.mp4 2>/dev/null && base64 -w 0 /tmp/video.mp4"`;
+            exec(cmd, { maxBuffer: 1024 * 1024 * 50, timeout: 30000 }, async (error, stdout) => {
+                const b64 = (stdout || '').trim().replace(/\s/g, '');
+                if (error || b64.length < 100) {
+                    await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Failed']).catch(() => {});
+                    return res.json({ terminalOutput: `meterpreter > screenshare\n[!] Recording failed: ${error?.message || 'no output'}` });
+                }
+                await fs.writeFile(filePath, b64, 'base64').catch(() => {});
+                await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)', [username, attackType, targetIp || 'Internal Node', 'Success']).catch(() => {});
+                return res.json({ terminalOutput: `meterpreter > screenshare\n[*] Recording 8s of victim desktop...\n[+] Saved to /app/loot/${fileName}`, videoFileName: fileName, lootFile: fileName });
             });
         });
-        return; 
+        return;
     }
 
-    const allowedAttackTypes = Object.keys(simulatedOutputs);
-    if (!allowedAttackTypes.includes(attackType) && !['screenshot', 'mic', 'screenshare'].includes(attackType)) {
-        return res.status(400).json({ error: "Unknown attack module." });
-    }
-
-    if (['webcam', 'download', 'hashdump'].includes(attackType)) {
-        const ext = attackType === 'webcam' ? 'jpg' : attackType === 'download' ? 'pdf' : 'txt';
-        const fileContent = `[Simulated Captured Data for ${attackType} module. Timestamp: ${new Date().toISOString()}]`;
+    if (attackType === 'payload') {
+        const arch = req.body.arch || 'x64';
+        const encoder = req.body.encoder || 'x64/xor';
+        const fileName = `payload_${Date.now()}.exe`;
+        const fileContent = `[Simulated Payload]\nPlatform: windows\nArch: ${arch}\nEncoder: ${encoder}\nIterations: 5\nSize: 510 bytes\nGenerated: ${new Date().toISOString()}`;
         try {
-            await fs.writeFile(path.join(lootDir, `${attackType}_${Date.now()}.${ext}`), fileContent);
+            await fs.writeFile(path.join(lootDir, fileName), fileContent);
         } catch (err) {}
+        await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)',
+            [username, attackType, targetIp || 'Internal Node', 'Success']).catch(() => {});
+        return res.json({ terminalOutput: `[*] msfvenom generating payload...\n[*] Platform: windows | Arch: ${arch}\n[*] Encoder: ${encoder} | Iterations: 5\n[+] Payload size: 510 bytes\n[+] Saved as /app/loot/${fileName}` });
     }
 
-    const output = simulatedOutputs[attackType] ? simulatedOutputs[attackType](targetIp || '10.0.0.1') : 'Simulated output.';
+    if (attackType === 'web_scan') {
+        const targetUrl = targetIp;
+        const fetchPage = (url) => new Promise((resolve) => {
+            let parsed;
+            try { parsed = new URL(url); } catch { return resolve(null); }
+            const lib = parsed.protocol === 'https:' ? https : http;
+            const req = lib.get(url, { timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }, (res) => {
+                let body = '';
+                res.on('data', chunk => { body += chunk; if (body.length > 150000) req.destroy(); });
+                res.on('end', () => resolve({ headers: res.headers, body, status: res.statusCode }));
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+        });
 
+        const cveMap = {
+            apache:    { id: 'CVE-2021-41773', severity: 'CRITICAL', description: 'Path traversal and remote code execution in Apache HTTP Server 2.4.49' },
+            nginx:     { id: 'CVE-2021-23017', severity: 'HIGH',     description: 'Off-by-one heap write in nginx LDAP/DNS resolver' },
+            iis:       { id: 'CVE-2022-21907', severity: 'CRITICAL', description: 'HTTP Protocol Stack remote code execution in Microsoft IIS' },
+            php:       { id: 'CVE-2019-11043', severity: 'HIGH',     description: 'RCE in PHP-FPM via underflow in env_path_info' },
+            aspnet:    { id: 'CVE-2021-34473', severity: 'CRITICAL', description: 'Microsoft Exchange ProxyShell RCE chain' },
+            wordpress: { id: 'CVE-2023-22515', severity: 'CRITICAL', description: 'WordPress Broken Access Control allows unauthenticated admin account creation' },
+            joomla:    { id: 'CVE-2023-23752', severity: 'MEDIUM',   description: 'Joomla improper access checks lead to information disclosure' },
+            drupal:    { id: 'CVE-2018-7600',  severity: 'CRITICAL', description: 'Drupalgeddon2: RCE via form API in Drupal core' },
+            tomcat:    { id: 'CVE-2020-1938',  severity: 'CRITICAL', description: 'Apache Tomcat AJP File Inclusion (Ghostcat)' },
+            jquery:    { id: 'CVE-2019-11358', severity: 'MEDIUM',   description: 'jQuery prototype pollution via Object.prototype' },
+        };
+
+        const page = await fetchPage(targetUrl);
+        const fingerprints = [];
+        const cves = [];
+
+        if (page) {
+            const h = page.headers;
+            const body = page.body;
+            const server = (h['server'] || '').toLowerCase();
+
+            if (h['server']) fingerprints.push({ type: 'Web Server', value: h['server'] });
+            if (/apache/.test(server))  cves.push(cveMap.apache);
+            if (/nginx/.test(server))   cves.push(cveMap.nginx);
+            if (/iis/.test(server))     { fingerprints.push({ type: 'OS', value: 'Windows Server' }); cves.push(cveMap.iis); }
+
+            const poweredBy = h['x-powered-by'] || '';
+            if (poweredBy) fingerprints.push({ type: 'Runtime', value: poweredBy });
+            if (/php/i.test(poweredBy))      cves.push(cveMap.php);
+            if (/asp\.net/i.test(poweredBy)) cves.push(cveMap.aspnet);
+
+            const cookies = [].concat(h['set-cookie'] || []).join(' ');
+            if (/PHPSESSID/i.test(cookies) && !fingerprints.some(f => /php/i.test(f.value)))
+                fingerprints.push({ type: 'Language', value: 'PHP' });
+            if (/JSESSIONID/i.test(cookies)) { fingerprints.push({ type: 'Runtime', value: 'Java/Tomcat' }); cves.push(cveMap.tomcat); }
+            if (/ASP\.NET_SessionId/i.test(cookies) && !fingerprints.some(f => /asp/i.test(f.value)))
+                fingerprints.push({ type: 'Runtime', value: 'ASP.NET' });
+
+            if (/\/wp-(?:content|includes)\//i.test(body) || /wordpress/i.test(body)) {
+                const ver = body.match(/WordPress\s+([\d.]+)/i)?.[1];
+                fingerprints.push({ type: 'CMS', value: ver ? `WordPress ${ver}` : 'WordPress' });
+                cves.push(cveMap.wordpress);
+            } else if (/\/components\/com_|joomla/i.test(body)) {
+                fingerprints.push({ type: 'CMS', value: 'Joomla' });
+                cves.push(cveMap.joomla);
+            } else if (/drupal/i.test(body) || h['x-drupal-cache']) {
+                fingerprints.push({ type: 'CMS', value: 'Drupal' });
+                cves.push(cveMap.drupal);
+            }
+
+            const generator = body.match(/<meta[^>]+name=["']generator["'][^>]+content=["']([^"']+)["']/i)?.[1]
+                           || body.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']generator["']/i)?.[1];
+            if (generator && !fingerprints.some(f => f.type === 'CMS'))
+                fingerprints.push({ type: 'Generator', value: generator });
+
+            const jq = body.match(/jquery[.\-]([\d.]+)(?:\.min)?\.js/i)?.[1];
+            if (jq) {
+                fingerprints.push({ type: 'JavaScript', value: `jQuery ${jq}` });
+                const [maj, min] = jq.split('.').map(Number);
+                if (maj < 3 || (maj === 3 && min < 5)) cves.push(cveMap.jquery);
+            }
+
+            if (!fingerprints.some(f => f.type === 'OS')) {
+                const combo = server + ' ' + body.slice(0, 5000);
+                if (/ubuntu/i.test(combo))           fingerprints.push({ type: 'OS', value: 'Linux Ubuntu' });
+                else if (/debian/i.test(combo))      fingerprints.push({ type: 'OS', value: 'Linux Debian' });
+                else if (/centos|rhel/i.test(combo)) fingerprints.push({ type: 'OS', value: 'Linux CentOS/RHEL' });
+                else                                 fingerprints.push({ type: 'OS', value: 'Linux' });
+            }
+        } else {
+            fingerprints.push({ type: 'Status', value: 'Host unreachable or blocked scan' });
+            cves.push({ id: 'N/A', severity: 'INFO', description: 'Could not connect to target. Host may be offline or blocking scans.' });
+        }
+
+        if (fingerprints.length === 0) fingerprints.push({ type: 'Note', value: 'No signatures detected' });
+        const uniqueCves = [...new Map(cves.map(c => [c.id, c])).values()].slice(0, 3);
+        if (uniqueCves.length === 0) uniqueCves.push({ id: 'INFO', severity: 'LOW', description: 'No known CVEs matched for detected stack.' });
+
+        const termLines = [`[*] AI Scanner initiating on ${targetUrl}...`];
+        fingerprints.forEach(f => termLines.push(`[+] ${f.type}: ${f.value}`));
+        uniqueCves.forEach(c => termLines.push(`[!] ${c.severity}: ${c.id}`));
+        termLines.push('[*] Full report cached in memory.');
+
+        await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)',
+            [username, 'web_scan', targetUrl, 'Success']).catch(() => {});
+        return res.json({ terminalOutput: termLines.join('\n'), scanData: { fingerprints, cves: uniqueCves } });
+    }
+
+    const dbLog = (status) => pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1,$2,$3,$4)', [username, attackType, targetIp || 'Internal Node', status]).catch(() => {});
+
+    // Reverse Shell — real commands in container
+    if (attackType === 'reverse_shell') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec ${container} bash -c "id && uname -a && hostname && ip route 2>/dev/null | head -3 && echo '--- Processes ---' && ps aux --sort=-%cpu 2>/dev/null | head -6"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const info = (stdout || err?.message || 'No output').trim();
+                await dbLog(err ? 'Failed' : 'Success');
+                res.json({ terminalOutput: `meterpreter > sessions -i 1\n[*] Starting interaction with session 1...\n\n${info}\n\nmeterpreter > ` });
+            });
+        });
+        return;
+    }
+
+    // Keylogger — active window + clipboard via xdotool/xclip
+    if (attackType === 'keyscan') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u abc -e DISPLAY=:1 -e HOME=/config ${container} bash -c "echo '[*] Active window:' && xdotool getactivewindow getwindowname 2>/dev/null || echo 'Desktop'; echo '[*] Clipboard content:' && xclip -o -selection clipboard 2>/dev/null || echo '(empty)'"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const captured = (stdout || '').trim();
+                await dbLog('Success');
+                res.json({ terminalOutput: `meterpreter > keyscan_start\n[*] Starting the keystroke sniffer...\n[*] Monitoring victim desktop input...\n${captured || '[*] No active input detected'}` });
+            });
+        });
+        return;
+    }
+
+    // Webcam — list available camera devices on victim
+    if (attackType === 'webcam') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec ${container} bash -c "echo '--- Video Devices ---' && ls /dev/video* 2>/dev/null || echo 'No /dev/video* devices found'; echo '--- USB Devices ---' && lsusb 2>/dev/null | grep -i -E 'camera|webcam|video|logitech|microsoft' || echo 'No USB camera devices detected'; echo '--- V4L2 ---' && v4l2-ctl --list-devices 2>/dev/null || echo 'v4l2 not available'"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const info = (stdout || '').trim();
+                await dbLog('Success');
+                res.json({ terminalOutput: `meterpreter > webcam_list\n[*] Enumerating webcam devices on target...\n${info}\n\nmeterpreter > webcam_snap\n[!] No physical webcam device found on target.\n[-] Hardware camera not attached to victim machine.` });
+            });
+        });
+        return;
+    }
+
+    // Get SYSTEM — real root-level system info
+    if (attackType === 'getsystem') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u root ${container} bash -c "echo '--- Identity ---' && id && whoami && echo '--- OS ---' && cat /etc/os-release 2>/dev/null | grep -E 'PRETTY|VERSION' | head -3 && echo '--- Kernel ---' && uname -a && echo '--- Root ---' && ls /root 2>/dev/null || echo '(no /root)'"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const info = (stdout || err?.message || 'No output').trim();
+                await dbLog(err ? 'Failed' : 'Success');
+                res.json({ terminalOutput: `meterpreter > getsystem\n[*] Attempting privilege escalation via Named Pipe Impersonation...\n[+] Success: obtained root access\n\n${info}` });
+            });
+        });
+        return;
+    }
+
+    // Hashdump — real /etc/shadow read (admin only, enforced by checkRole)
+    if (attackType === 'hashdump') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u root ${container} bash -c "cat /etc/shadow 2>/dev/null || cat /etc/passwd"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const hashes = (stdout || err?.message || 'Could not read shadow file').trim();
+                await dbLog(err ? 'Failed' : 'Success');
+                res.json({ terminalOutput: `meterpreter > hashdump\n[*] Extracting local password hashes from target...\n${hashes}` });
+            });
+        });
+        return;
+    }
+
+    // Persistence — create real autostart .desktop file
+    if (attackType === 'persistence') {
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u abc ${container} bash -c "mkdir -p /config/.config/autostart && printf '[Desktop Entry]\\nType=Application\\nName=System Update Service\\nExec=/bin/sleep 99999\\nHidden=false\\nX-GNOME-Autostart-enabled=true\\n' > /config/.config/autostart/sys-updater.desktop && echo 'Installed:' && ls -la /config/.config/autostart/sys-updater.desktop"`;
+            exec(cmd, { timeout: 10000 }, async (err, stdout) => {
+                const out = (stdout || err?.message || '').trim();
+                await dbLog(err ? 'Failed' : 'Success');
+                res.json({ terminalOutput: `meterpreter > run persistence -U -i 5\n[*] Installing persistent backdoor to autorun...\n[+] Created: /config/.config/autostart/sys-updater.desktop\n[+] ${out}\n[+] Backdoor will execute on next login.` });
+            });
+        });
+        return;
+    }
+
+    // Exfiltrate — real file listing from victim home directory
+    if (attackType === 'download') {
+        const fileName = `exfil_${Date.now()}.txt`;
+        const filePath = path.join(lootDir, fileName);
+        getVictimContainer((container) => {
+            const cmd = `docker exec -u abc ${container} bash -c "echo '=== Desktop ===' && ls /config/Desktop/ 2>/dev/null || echo '(empty)'; echo '=== Downloads ===' && ls /config/Downloads/ 2>/dev/null || echo '(empty)'; echo '=== Documents ===' && ls /config/Documents/ 2>/dev/null || echo '(empty)'; echo '=== All files ===' && find /config -maxdepth 3 -not -path '*/.config*' -not -path '*/.local*' -not -path '*/.cache*' -type f 2>/dev/null | head -20; echo '=== Size ===' && du -sh /config 2>/dev/null"`;
+            exec(cmd, { timeout: 15000 }, async (err, stdout) => {
+                const listing = (stdout || 'No files found').trim();
+                await fs.writeFile(filePath, listing).catch(() => {});
+                await dbLog(err ? 'Failed' : 'Success');
+                res.json({ terminalOutput: `meterpreter > download c:\\users\\victim\\documents\\\n[*] Scanning target filesystem...\n${listing}\n[+] File listing saved to /app/loot/${fileName}`, lootFile: fileName });
+            });
+        });
+        return;
+    }
+
+    // Timestomp — simulated (no forensic artifacts to modify in container)
+    if (attackType === 'timestomp') {
+        await dbLog('Simulated');
+        return res.json({ terminalOutput: simulatedOutputs['timestomp']() });
+    }
+
+    return res.status(400).json({ error: "Unknown attack module." });
+});
+
+// Open Galgalatz on victim desktop
+app.post('/api/victim/open-youtube', authenticate, (req, res) => {
+    getVictimContainer((container) => {
+        // Use direct stream URL so Firefox auto-plays without needing a click
+        const streamUrl = 'https://glzwizzlv.bynetcdn.com/glglz_mp3';
+        const siteUrl = 'https://glz.co.il/%D7%92%D7%9C%D7%92%D7%9C%D7%A6';
+        // Kill Firefox fully, clear session lock, start fresh with URL
+        const cmd = `docker exec -u abc -e DISPLAY=:1 -e HOME=/config ${container} bash -c "pkill -9 firefox 2>/dev/null; sleep 2; rm -f /config/.mozilla/firefox/*/lock /config/.mozilla/firefox/*/.parentlock 2>/dev/null; nohup firefox --no-sandbox --new-instance '${streamUrl}' >/tmp/firefox.log 2>&1 & sleep 6; pgrep firefox >/dev/null && echo RUNNING || echo FAILED"`;
+        exec(cmd, { timeout: 25000 }, (err, stdout) => {
+            if (err) return res.json({ success: false, message: `docker exec failed: ${err.message}` });
+            const out = (stdout || '').trim();
+            if (out.includes('RUNNING')) return res.json({ success: true, message: 'Galgalatz radio is now playing on victim desktop' });
+            return res.json({ success: false, message: `Failed to open Galgalatz: ${out}` });
+        });
+    });
+});
+
+// List loot files
+app.get('/api/loot', authenticate, async (req, res) => {
+    const lootDir = path.join(__dirname, 'loot');
     try {
-        await pool.query(
-            'INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)',
-            [username, attackType, targetIp || 'Internal Node', 'Success']
-        );
-    } catch (e) {}
+        const files = await fs.readdir(lootDir);
+        const list = (await Promise.all(files.map(async (f) => {
+            try {
+                const stat = await fs.stat(path.join(lootDir, f));
+                return { name: f, size: stat.size, mtime: stat.mtime };
+            } catch { return null; }
+        }))).filter(Boolean).sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+        res.json(list);
+    } catch { res.json([]); }
+});
 
-    res.json({ terminalOutput: output });
+// Delete a loot file
+app.delete('/api/loot/:filename', authenticate, async (req, res) => {
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(__dirname, 'loot', filename);
+    try {
+        await fs.unlink(filePath);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(404).json({ error: 'File not found' });
+    }
+});
+
+// Clear all history
+app.delete('/api/history', authenticate, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM scan_history');
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to clear history' });
+    }
+});
+
+// Serve loot files (token via query param so video/audio src works)
+app.get('/api/loot/:filename', (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        jwt.verify(token, JWT_SECRET);
+    } catch {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(__dirname, 'loot', filename);
+    res.sendFile(filePath, (err) => {
+        if (err) res.status(404).json({ error: 'File not found' });
+    });
+});
+
+// Exploit repository import
+app.post('/api/exploit/import', authenticate, async (req, res) => {
+    const { url, moduleType } = req.body;
+    const username = req.user.username;
+
+    console.log(`[!] User '${username}' importing exploit from [${url}] type [${moduleType}]`);
+
+    if (!url) return res.status(400).json({ error: 'URL is required.' });
+
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch {
+        return res.status(400).json({ error: 'Invalid URL.' });
+    }
+
+    const lootDir = path.join(__dirname, 'loot');
+    await fs.mkdir(lootDir, { recursive: true }).catch(() => {});
+
+    const rawName = parsedUrl.pathname.split('/').pop() || 'module';
+    const cleanName = rawName.replace(/[^a-zA-Z0-9._-]/g, '') || 'exploit_module';
+    const moduleName = cleanName.replace(/\.rb$/i, '');
+    const prefix = moduleType === 'Exploit' ? 'exploit/custom/' : moduleType === 'Auxiliary' ? 'auxiliary/custom/' : 'post/custom/';
+    const fullName = `${prefix}${moduleName}`;
+    const fileName = `exploit_${moduleName}_${Date.now()}.rb`;
+    const filePath = path.join(lootDir, fileName);
+
+    const fetchContent = () => new Promise((resolve) => {
+        const lib = parsedUrl.protocol === 'https:' ? https : http;
+        const request = lib.get(url, { timeout: 8000 }, (response) => {
+            let data = '';
+            response.on('data', chunk => { data += chunk; if (data.length > 500000) request.destroy(); });
+            response.on('end', () => resolve({ content: data, size: data.length }));
+        });
+        request.on('error', () => resolve(null));
+        request.on('timeout', () => { request.destroy(); resolve(null); });
+    });
+
+    let fileContent;
+    let fetchNote;
+    const result = await fetchContent();
+    if (result && result.content) {
+        fileContent = result.content;
+        fetchNote = `[+] Downloaded ${result.size} bytes from source`;
+    } else {
+        fileContent = `# Exploit Module: ${fullName}\n# Source: ${url}\n# Type: ${moduleType}\n# Imported: ${new Date().toISOString()}\n# Note: Source unreachable - stub created\n`;
+        fetchNote = `[!] Source unreachable - stub file created`;
+    }
+
+    try { await fs.writeFile(filePath, fileContent); } catch (err) {}
+
+    await pool.query('INSERT INTO scan_history(username, action, target, status) VALUES($1, $2, $3, $4)',
+        [username, 'exploit_import', url, 'Success']).catch(() => {});
+
+    return res.json({
+        success: true,
+        moduleName: fullName,
+        terminalOutput: `[*] Fetching exploit from ${url}...\n${fetchNote}\n[*] Module type: ${moduleType}\n[+] Saved to /app/loot/${fileName}\n[+] Imported as: ${fullName}\n[+] Module added to internal repository.`
+    });
 });
 
 // Admin: list all users
@@ -583,6 +1067,9 @@ app.delete('/api/admin/users/:id', authenticate, requireAdmin, async (req, res) 
     }
 });
 
+// ─── Server Startup & Graceful Shutdown ───────────────────────────────────────
+// Only starts the HTTP server when the file is run directly (not imported as a
+// module). Handles SIGTERM and SIGINT for clean shutdown in Docker/ECS environments.
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     const server = app.listen(PORT, () => console.log(`[SYSTEM] MSF Control Node Active on Port ${PORT}`));

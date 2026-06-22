@@ -116,6 +116,7 @@
     </div>
     
     <script>
+        // If the user already has a saved token, hide the landing page immediately.
         if (localStorage.getItem('authToken') || sessionStorage.getItem('authToken')) {
             const lp = document.getElementById('landing-page');
             if (lp) lp.style.display = 'none';
@@ -412,7 +413,7 @@
                 <div id="scan-results" class="hidden grid grid-cols-2 gap-5">
                     <div class="glass-inner p-5 rounded-xl">
                         <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Fingerprinting Results</h3>
-                        <ul class="text-sm space-y-2.5" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                        <ul id="fingerprint-list" class="text-sm space-y-2.5" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
                             <li class="text-emerald-400"><span class="text-slate-500">[+]</span> OS: Windows Server 2019</li>
                             <li class="text-emerald-400"><span class="text-slate-500">[+]</span> Web Server: Apache 2.4.41</li>
                             <li class="text-emerald-400"><span class="text-slate-500">[+]</span> CMS: WordPress 5.2.3</li>
@@ -421,10 +422,10 @@
                     <div class="glass-inner p-5 rounded-xl border-rose-900/30">
                         <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">AI CVE Matcher</h3>
                         <div class="mb-3">
-                            <span class="font-bold text-rose-400" style="font-family: 'JetBrains Mono', monospace;">CVE-2019-8942</span>
-                            <span class="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md text-[10px] font-bold ml-2">HIGH</span>
+                            <span id="cve-id" class="font-bold text-rose-400" style="font-family: 'JetBrains Mono', monospace;">CVE-2019-8942</span>
+                            <span id="cve-severity" class="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md text-[10px] font-bold ml-2">HIGH</span>
                         </div>
-                        <p class="text-xs text-slate-400 mb-5">Remote Code Execution vulnerability identified in WordPress core.</p>
+                        <p id="cve-desc" class="text-xs text-slate-400 mb-5">Remote Code Execution vulnerability identified in WordPress core.</p>
                         <button onclick="exportReport(this)" class="w-full btn-action bg-slate-800 hover:bg-slate-700 border border-slate-600/50 text-white py-2.5 rounded-lg text-xs">
                             <i class="fas fa-file-pdf text-rose-400 mr-1.5"></i> Export PDF Report
                         </button>
@@ -434,51 +435,99 @@
         </div>
 
         <div id="tab-attack" class="tab-content hidden shrink-0">
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
-                <div class="glass-panel p-7 rounded-2xl shadow-lg">
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="feature-icon bg-rose-500/15 border border-rose-500/20"><i class="fas fa-crosshairs text-rose-400"></i></div>
-                        <div>
-                            <h2 class="font-bold text-white text-lg">Exploit Engine</h2>
-                            <p class="text-xs text-slate-400 mt-0.5">Select payload and run controlled simulated attacks.</p>
-                        </div>
-                    </div>
-
-                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Target IP</label>
-                    <input type="text" id="target-ip-attack" value="192.168.105.70" class="w-full glass-inner px-4 py-2.5 rounded-lg mb-4 text-sm text-white outline-none focus:border-slate-500/50 transition" style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">
-
-                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Attack Module</label>
-                    <select id="attack-type" class="w-full glass-inner px-4 py-2.5 rounded-lg text-sm text-rose-400 font-semibold mb-6 outline-none">
-                        <option value="reverse_shell">-- Connect Reverse Shell --</option>
-                        <optgroup label="Spying (Data Exfiltration)">
-                            <option value="keyscan">1. Keylogging Attack</option>
-                            <option value="screenshot">2. Screenshot Capture</option>
-                            <option value="webcam">3. Webcam Access</option>
-                            <option value="mic">4. Audio Recording</option>
-                            <option value="screenshare">5. Live Screen Monitoring</option>
-                        </optgroup>
-                        <optgroup label="System Control">
-                            <option value="getsystem">6. Privilege Escalation</option>
-                            <option value="hashdump">7. Credential Dumping</option>
-                            <option value="persistence">8. Persistence Setup</option>
-                            <option value="download">9. File Exfiltration</option>
-                            <option value="timestomp">10. Anti-Forensics</option>
-                        </optgroup>
-                    </select>
-
-                    <button onclick="runAttack()" class="w-full btn-action bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl flex justify-center items-center gap-2 text-sm shadow-lg shadow-rose-600/20">
-                        <i class="fas fa-play"></i> Execute Module
-                    </button>
+            <!-- Target IP row -->
+            <div class="glass-panel px-5 py-4 rounded-2xl shadow-lg mb-5 flex items-center gap-4">
+                <div class="feature-icon bg-rose-500/15 border border-rose-500/20 shrink-0"><i class="fas fa-crosshairs text-rose-400"></i></div>
+                <div class="flex-1">
+                    <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-1">Target IP</label>
+                    <input type="text" id="target-ip-attack" value="192.168.105.70" class="w-full glass-inner px-3 py-2 rounded-lg text-sm text-white outline-none" style="font-family:'JetBrains Mono',monospace;">
                 </div>
+                <button onclick="window.open('https://51.17.232.63:4443', '_blank')" class="shrink-0 btn-action bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-semibold shadow-lg shadow-purple-600/20">
+                    <i class="fas fa-desktop"></i> Open Victim Computer
+                </button>
+            </div>
 
-                <div class="terminal-window rounded-2xl flex flex-col h-[400px]">
-                    <div class="terminal-bar h-10 flex items-center px-4 rounded-t-2xl shrink-0">
-                        <div class="flex gap-2"><div class="w-3 h-3 rounded-full bg-red-500/80"></div><div class="w-3 h-3 rounded-full bg-yellow-500/80"></div><div class="w-3 h-3 rounded-full bg-green-500/80"></div></div>
-                        <span class="text-[10px] text-slate-500 ml-4 font-medium" style="font-family: 'JetBrains Mono', monospace;">root@msf_engine:~</span>
+            <!-- 10 exploit cards -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                <button onclick="runAttack('reverse_shell')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-rose-500/10 hover:border-rose-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-rose-500/15 flex items-center justify-center"><i class="fas fa-terminal text-rose-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Reverse Shell</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Open backdoor session</span>
+                </button>
+                <button onclick="runAttack('keyscan')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-amber-500/10 hover:border-amber-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center"><i class="fas fa-keyboard text-amber-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Keylogger</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Capture keystrokes</span>
+                </button>
+                <button onclick="runAttack('screenshot')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-blue-500/10 hover:border-blue-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center"><i class="fas fa-camera text-blue-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Screenshot</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Capture live screen</span>
+                </button>
+                <button onclick="runAttack('webcam')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-purple-500/10 hover:border-purple-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center"><i class="fas fa-video text-purple-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Webcam Snap</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Access camera</span>
+                </button>
+                <button onclick="runAttack('mic')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-yellow-500/10 hover:border-yellow-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-yellow-500/15 flex items-center justify-center"><i class="fas fa-microphone text-yellow-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Mic Record</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Record audio 5s</span>
+                </button>
+                <button onclick="runAttack('screenshare')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-cyan-500/10 hover:border-cyan-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-cyan-500/15 flex items-center justify-center"><i class="fas fa-display text-cyan-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Screen Record</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Record desktop 5s</span>
+                </button>
+                <button onclick="runAttack('getsystem')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-rose-500/10 hover:border-rose-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-rose-500/15 flex items-center justify-center"><i class="fas fa-crown text-rose-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Get SYSTEM</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Privilege escalation</span>
+                </button>
+                <button onclick="runAttack('hashdump')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-rose-500/10 hover:border-rose-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-rose-500/15 flex items-center justify-center"><i class="fas fa-lock-open text-rose-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Hashdump</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Dump credentials</span>
+                </button>
+                <button onclick="runAttack('persistence')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-orange-500/10 hover:border-orange-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-orange-500/15 flex items-center justify-center"><i class="fas fa-repeat text-orange-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Persistence</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Install backdoor</span>
+                </button>
+                <button onclick="runAttack('download')" class="exploit-card group glass-inner rounded-xl p-4 flex flex-col items-center gap-2 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent transition text-center">
+                    <div class="w-9 h-9 rounded-lg bg-emerald-500/15 flex items-center justify-center"><i class="fas fa-file-export text-emerald-400 text-sm"></i></div>
+                    <span class="text-[11px] font-semibold text-white leading-tight">Exfiltrate</span>
+                    <span class="text-[10px] text-slate-500 leading-tight">Steal target files</span>
+                </button>
+            </div>
+
+            <!-- Terminal -->
+            <div class="terminal-window rounded-2xl flex flex-col h-[420px]">
+                <div class="terminal-bar h-10 flex items-center px-4 rounded-t-2xl shrink-0">
+                    <div class="flex gap-2"><div class="w-3 h-3 rounded-full bg-red-500/80"></div><div class="w-3 h-3 rounded-full bg-yellow-500/80"></div><div class="w-3 h-3 rounded-full bg-green-500/80"></div></div>
+                    <span class="text-[10px] text-slate-500 ml-4 font-medium" style="font-family:'JetBrains Mono',monospace;">root@msf_engine:~</span>
+                    <button onclick="document.getElementById('term').innerHTML='msf6 > System initialized. Connected to Database.<br>'" class="ml-auto text-[10px] text-slate-600 hover:text-slate-400 transition">clear</button>
+                </div>
+                <div class="p-5 text-[#4ade80] text-xs flex-1 overflow-y-auto" id="term" style="font-family:'JetBrains Mono',monospace;">
+                    msf6 > System initialized. Connected to Database.<br>
+                </div>
+            </div>
+
+            <!-- Loot Files Panel -->
+            <div class="glass-panel rounded-2xl mt-4" id="loot-panel">
+                <div class="flex items-center justify-between px-5 py-3 border-b border-slate-700/40">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-folder-open text-amber-400 text-sm"></i>
+                        <span class="text-xs font-bold text-slate-300">Loot Files</span>
+                        <span id="loot-count" class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-md font-bold">0</span>
                     </div>
-                    <div class="p-5 text-[#4ade80] text-xs flex-1 overflow-y-auto" id="term" style="font-family: 'JetBrains Mono', monospace;">
-                        msf6 > System initialized. Connected to Database.<br>
+                    <div class="flex items-center gap-3">
+                        <button onclick="refreshLootFiles()" class="text-[10px] text-slate-500 hover:text-slate-300 transition"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
+                        <button onclick="clearAllLoot()" class="text-[10px] text-rose-500 hover:text-rose-300 transition"><i class="fas fa-trash mr-1"></i>Clear All</button>
                     </div>
+                </div>
+                <div id="loot-list" class="px-5 py-3 max-h-48 overflow-y-auto table-scrollbar">
+                    <p class="text-[11px] text-slate-600 italic">No loot captured yet. Run exploits to collect data.</p>
                 </div>
             </div>
         </div>
@@ -512,12 +561,13 @@
                         </div>
                     </div>
                     <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Source URL / Path</label>
-                    <input type="text" placeholder="https://github.com/user/new-exploit.rb" class="w-full glass-inner px-4 py-2.5 rounded-lg mb-4 text-sm text-white outline-none focus:border-slate-500/50 transition">
+                    <input id="exploit-url" type="text" placeholder="https://github.com/user/new-exploit.rb" class="w-full glass-inner px-4 py-2.5 rounded-lg mb-4 text-sm text-white outline-none focus:border-slate-500/50 transition">
                     <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Module Type</label>
-                    <select class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-6 outline-none text-sm">
+                    <select id="exploit-type" class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-4 outline-none text-sm">
                         <option>Exploit</option><option>Auxiliary</option><option>Post</option>
                     </select>
-                    <button onclick="alert('Importing exploit module to internal repository...')" class="w-full btn-action bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl flex justify-center items-center gap-2 text-sm shadow-lg shadow-emerald-600/20">
+                    <div id="exploit-output" class="glass-inner rounded-lg p-3 mb-4 text-xs font-mono text-slate-500 whitespace-pre-wrap max-h-28 overflow-y-auto">[*] Ready — enter a URL above and click Import.</div>
+                    <button id="btn-import" onclick="importExploit()" class="w-full btn-action bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl flex justify-center items-center gap-2 text-sm shadow-lg shadow-emerald-600/20">
                         <i class="fas fa-cloud-arrow-down"></i> Import to Repository
                     </button>
                 </div>
@@ -537,9 +587,18 @@
                 <select id="arch" class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-4 outline-none text-sm"><option>x64</option><option>x86</option></select>
                 <label class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold block mb-2">Encoder</label>
                 <select id="encoder" class="w-full glass-inner text-white px-4 py-2.5 rounded-lg mb-6 outline-none text-sm"><option>x64/xor</option><option>shikata_ga_nai</option></select>
-                <button onclick="runAttack('payload')" class="w-full btn-action bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl text-sm shadow-lg shadow-indigo-600/20">
+                <button id="btn-payload-gen" onclick="generatePayload()" class="w-full btn-action bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl text-sm shadow-lg shadow-indigo-600/20">
                     <i class="fas fa-wand-magic-sparkles mr-2"></i>Generate Payload
                 </button>
+            </div>
+            <div id="payload-term-wrap" class="hidden glass-panel p-5 rounded-2xl max-w-lg shadow-lg">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+                    <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+                    <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                    <span class="text-[10px] text-slate-500 ml-2 font-medium" style="font-family: 'JetBrains Mono', monospace;">msfvenom output</span>
+                </div>
+                <div id="payload-term" class="text-[#4ade80] text-xs p-2 overflow-y-auto max-h-40" style="font-family: 'JetBrains Mono', monospace;"></div>
             </div>
         </div>
 
@@ -642,6 +701,7 @@
                 <div class="flex gap-2">
                     <button onclick="fetchLogs()" class="btn-action text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-600/40 text-slate-300 px-3.5 py-1.5 rounded-lg"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
                     <button onclick="exportCSV()" class="btn-action text-[11px] bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold px-3 py-1.5 rounded-lg"><i class="fas fa-file-csv mr-1"></i>Export CSV</button>
+                    <button onclick="clearHistory()" class="btn-action text-[11px] bg-rose-900/40 hover:bg-rose-800/60 border border-rose-700/40 text-rose-300 px-3.5 py-1.5 rounded-lg"><i class="fas fa-trash mr-1"></i>Clear History</button>
                 </div>
             </div>
             <div class="overflow-x-auto overflow-y-auto flex-1 table-scrollbar rounded-xl glass-inner">
@@ -658,9 +718,12 @@
     </main>
 
     <script>
-        const API_BASE = 'http://localhost:3000';
+        // ─── Base API URL ──────────────────────────────────────────────────────────────
+        // Dynamically built from the current host so the frontend works behind any
+        // reverse proxy or CloudFront distribution without hardcoding a domain name.
+        const API_BASE = window.location.protocol + '//' + window.location.hostname;
 
-        /* Matrix Background */
+        /* Matrix Background — animated canvas that renders falling green characters */
         const canvas = document.getElementById('matrix-bg');
         const ctx = canvas.getContext('2d');
         let width = canvas.width = window.innerWidth;
@@ -689,7 +752,7 @@
             drops.length = nc;
         });
 
-        /* Helpers */
+        /* Helpers — shared utility functions used throughout the application */
         function escapeHtml(str) {
             if (str == null) return '';
             return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
@@ -701,17 +764,19 @@
             return fetch(API_BASE + path, { ...options, headers });
         }
 
-        /* Auth */
+        /* Auth — session state variables tracking the current logged-in user */
         let currentUserRole = 'Analyst';
         let currentUser = null;
         let resetEmail = ""; 
 
+        // Displays a success (green) or error (red) banner inside the auth overlay.
         function showMessage(text, isError) {
             const m = document.getElementById('auth-message');
             m.innerText = text;
             m.className = 'text-center text-xs font-bold mb-5 p-2.5 rounded-lg block ' +
                 (isError ? 'bg-rose-500/15 text-rose-300 border border-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25');
         }
+        // Updates password rule indicators in real-time as the user types.
         function checkPasswordStrength(pw) {
             [{id:'pw-len',test:pw.length>=8},{id:'pw-lower',test:/[a-z]/.test(pw)},{id:'pw-upper',test:/[A-Z]/.test(pw)},{id:'pw-special',test:/[^a-zA-Z0-9]/.test(pw)}].forEach(r => {
                 const el = document.getElementById(r.id);
@@ -720,6 +785,9 @@
             });
         }
 
+        // ─── Auth Panel Switcher ───────────────────────────────────────────────────────
+        // Shows the requested sub-form (login / signup / forgot / verify) and hides
+        // all others. Also toggles the tab bar visibility for non-tabbed panels.
         function switchAuth(mode) {
             document.getElementById('auth-message').classList.add('hidden');
             ['form-login', 'form-signup', 'form-verify', 'form-forgot'].forEach(id => {
@@ -756,6 +824,8 @@
             }
         }
 
+        // Sends credentials to /api/login; on success stores the JWT, updates the
+        // sidebar, shows the Admin nav section when applicable, and hides the overlay.
         async function login() {
             const user = document.getElementById('login-user').value, pass = document.getElementById('login-pass').value;
             if (!user || !pass) { showMessage('Please enter username and password', true); return; }
@@ -778,12 +848,14 @@
                         document.getElementById('admin-nav-section').classList.add('hidden');
                     }
                     showTab('guide');
-                    fetchLogs(); fetchUserCount();
+                    fetchLogs(); fetchUserCount(); refreshLootFiles();
                 } else { showMessage('Login failed: ' + data.error, true); }
             } catch(e) { showMessage('Connection to backend failed. Ensure Docker is running.', true); }
         }
 
-        /* --- פונקציית ההתנתקות החדשה --- */
+        // ─── Logout ───────────────────────────────────────────────────────────────────
+        // Clears the JWT from both localStorage and sessionStorage, resets in-memory
+        // state, and returns the UI to the login screen.
         function logout() {
             localStorage.removeItem('authToken');
             localStorage.removeItem('currentUser');
@@ -796,11 +868,13 @@
             currentUser = null;
             
             document.getElementById('connectionOverlay').style.display = 'flex';
-            document.getElementById('login-pass').value = ''; // מאפס את שדה הסיסמה
+            document.getElementById('login-pass').value = ''; // clear the password field for security
             switchAuth('login');
         }
-        /* ------------------------------- */
+        // ─────────────────────────────────────────────────────────────────────────────
 
+        // Validates signup fields client-side, then calls /api/register/init to request
+        // a verification code; on success transitions the overlay to the verify panel.
         async function requestRegistration() {
             const user = document.getElementById('signup-user').value, email = document.getElementById('signup-email').value, pass = document.getElementById('signup-pass').value;
             if (!user || !pass || !email) { showMessage('Please fill all fields!', true); return; }
@@ -819,6 +893,7 @@
             } catch(e) { showMessage('Backend connection failed.', true); }
         }
 
+        // Sends the user's email to /api/forgot-password/init to trigger a reset code email.
         async function requestPasswordReset() {
             const email = document.getElementById('forgot-email').value;
             if (!email) { showMessage('Please enter your email', true); return; }
@@ -838,6 +913,7 @@
             } catch(e) { showMessage('Backend connection failed.', true); }
         }
 
+        // Submits the 6-digit code from the email to /api/register/verify to finalise registration.
         async function verifyAndRegister() {
             const email = document.getElementById('signup-email').value, code = document.getElementById('verify-code').value;
             if (!code) { showMessage('Please enter the code', true); return; }
@@ -849,6 +925,7 @@
             } catch(e) { showMessage('Backend connection failed.', true); }
         }
 
+        // Submits the reset code and new password to /api/forgot-password/verify.
         async function verifyAndResetPassword() {
             const code = document.getElementById('verify-code').value;
             const newPassword = document.getElementById('reset-new-pass').value;
@@ -869,7 +946,8 @@
             } catch(e) { showMessage('Backend connection failed.', true); }
         }
 
-        /* Tabs */
+        /* Tabs — switches the visible content panel and highlights the active nav button */
+        // Hides all tab panels, shows the requested one, and updates nav button styles.
         function showTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.getElementById('tab-' + tab).classList.remove('hidden');
@@ -877,14 +955,18 @@
             const btn = document.getElementById('btn-' + tab);
             if (btn) btn.classList.add('active');
             if (tab === 'users') fetchAdminUsers();
+            if (tab === 'attack') refreshLootFiles();
         }
 
-        /* Export */
+        /* Export — PDF scan reports and CSV audit logs */
+        // Renders the scan results panel to a PDF file using html2pdf.js.
         function exportReport(btn) {
             const orig = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin text-rose-400 mr-1"></i> Exporting...'; btn.disabled = true;
             const opt = { margin: 0.5, filename: 'SSEP_Report_' + Date.now() + '.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 1, useCORS: true }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
             try { html2pdf().set(opt).from(document.getElementById('scan-results')).save().then(() => { btn.innerHTML = '<i class="fas fa-check text-emerald-400 mr-1"></i> Done!'; setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000); }).catch(() => { btn.innerHTML = orig; btn.disabled = false; }); } catch(e) { btn.innerHTML = orig; btn.disabled = false; }
         }
+        // Reads the history table rows and generates a downloadable CSV file.
+        // Severity is derived from the attack module name (Critical/High/Medium/Info).
         function exportCSV() {
             const table = document.getElementById("history-table"); let csv = '\uFEFF' + ["Attack ID","Attacker","Target","Attack Module","Severity","Timestamp"].join(",") + "\r\n";
             for (let i = 1; i < table.rows.length; i++) {
@@ -901,52 +983,336 @@
             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
-        /* API */
+        /* Live Stats — polls /api/users/count and /api/heartbeat to keep sidebar counters current */
         async function fetchUserCount() { try { const d = await (await fetch(API_BASE + '/api/users/count')).json(); document.getElementById('user-count-display').innerText = d.count; } catch(e) {} }
         async function fetchOnlineUsers() { try { if (currentUser) { const d = await (await fetchAPI('/api/heartbeat', { method: 'POST', body: JSON.stringify({ username: currentUser }) })).json(); if (d.activeCount !== undefined) document.getElementById('online-count-display').innerText = d.activeCount; } } catch(e) {} }
         setInterval(fetchOnlineUsers, 5000); setInterval(fetchUserCount, 15000);
 
+        // Sends the target URL to the web_scan attack module; renders the detected
+        // technologies and matched CVEs in the scan results panel.
         async function runScan() {
             const btn = document.getElementById('btn-run-scan'), orig = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...'; btn.disabled = true;
-            try { await fetchAPI('/api/attack', { method: 'POST', body: JSON.stringify({ attackType: 'web_scan', targetIp: document.getElementById('target-url').value }) }); } catch(e) {}
-            setTimeout(() => {
-                document.getElementById('scan-results').classList.remove('hidden');
-                btn.innerHTML = '<i class="fas fa-check"></i> Complete'; btn.classList.replace('bg-blue-600', 'bg-emerald-600'); btn.disabled = false; fetchLogs();
-                setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('bg-emerald-600', 'bg-blue-600'); }, 3000);
-            }, 1200);
+            try {
+                const data = await (await fetchAPI('/api/attack', { method: 'POST', body: JSON.stringify({ attackType: 'web_scan', targetIp: document.getElementById('target-url').value }) })).json();
+                if (data.scanData) {
+                    document.getElementById('fingerprint-list').innerHTML = data.scanData.fingerprints.map(f =>
+                        `<li class="text-emerald-400"><span class="text-slate-500">[+]</span> ${escapeHtml(f.type)}: ${escapeHtml(f.value)}</li>`
+                    ).join('');
+                    const cve = data.scanData.cves[0];
+                    if (cve) {
+                        document.getElementById('cve-id').textContent = cve.id;
+                        document.getElementById('cve-desc').textContent = cve.description;
+                        const badge = document.getElementById('cve-severity');
+                        badge.textContent = cve.severity;
+                        const colors = { CRITICAL: 'bg-red-500/20 text-red-300 border-red-500/30', HIGH: 'bg-rose-500/20 text-rose-300 border-rose-500/30', MEDIUM: 'bg-amber-500/20 text-amber-300 border-amber-500/30', LOW: 'bg-blue-500/20 text-blue-300 border-blue-500/30', INFO: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+                        badge.className = `px-2 py-0.5 rounded-md text-[10px] font-bold ml-2 border ${colors[cve.severity] || colors.INFO}`;
+                    }
+                }
+            } catch(e) {}
+            document.getElementById('scan-results').classList.remove('hidden');
+            btn.innerHTML = '<i class="fas fa-check"></i> Complete'; btn.classList.replace('bg-blue-600', 'bg-emerald-600'); btn.disabled = false; fetchLogs();
+            setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('bg-emerald-600', 'bg-blue-600'); }, 3000);
         }
         
-        let isTyping = false;
+        // Generation counter — incremented on each new attack so stale async callbacks
+        // can detect they've been superseded and exit silently.
+        let attackGen = 0;
 
+        // Opens the Galgalatz radio stream in the victim's Firefox browser via docker exec.
+        async function openYouTube() {
+            const btn = document.getElementById('btn-youtube');
+            const t = document.getElementById('term');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Opening...';
+            const logLine = (text, cls) => {
+                t.appendChild(document.createElement('br'));
+                const s = document.createElement('span');
+                s.className = cls;
+                s.textContent = text;
+                t.appendChild(s);
+                t.scrollTop = t.scrollHeight;
+            };
+            logLine('[*] Starting Galgalatz radio stream on victim desktop...', 'text-slate-400');
+            try {
+                const data = await (await fetchAPI('/api/victim/open-youtube', { method: 'POST' })).json();
+                const success = data.success;
+                logLine(success ? '[+] ' + data.message : '[-] ' + (data.message || 'Failed to open YouTube'), success ? 'text-emerald-400' : 'text-rose-400');
+                btn.innerHTML = success ? '<i class="fas fa-radio"></i> Opened!' : '<i class="fas fa-times"></i> Failed';
+                btn.className = btn.className.replace('bg-red-600 hover:bg-red-500', success ? 'bg-emerald-600' : 'bg-rose-800');
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-radio"></i> Open Galgalatz on Victim';
+                    btn.className = btn.className.replace(success ? 'bg-emerald-600' : 'bg-rose-800', 'bg-red-600 hover:bg-red-500');
+                }, 3000);
+            } catch(e) {
+                logLine('[-] YouTube: connection error', 'text-rose-400');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-radio"></i> Open Galgalatz on Victim';
+            }
+        }
+
+        // ─── Exploit Engine Client ─────────────────────────────────────────────────────
+        // Posts the chosen attack type to /api/attack and streams the terminal response
+        // character by character. Injects inline audio/image/video players and download
+        // links when the backend returns base64 media or a loot file reference.
         async function runAttack(type) {
-            if (isTyping) return;
-            isTyping = true;
+            const myGen = ++attackGen;
 
-            const at = type || document.getElementById('attack-type').value, ip = document.getElementById('target-ip-attack') ? document.getElementById('target-ip-attack').value : "192.168.105.70", t = document.getElementById('term');
+            const at = type || 'unknown', ip = document.getElementById('target-ip-attack') ? document.getElementById('target-ip-attack').value : "192.168.105.70", t = document.getElementById('term');
             const s = document.createElement('span'); s.className = 'text-slate-500'; s.textContent = '[*] Requesting module ' + at + '...'; t.appendChild(document.createElement('br')); t.appendChild(s); t.scrollTop = t.scrollHeight;
             try {
                 const data = await (await fetchAPI('/api/attack', { method: 'POST', body: JSON.stringify({ attackType: at, targetIp: ip }) })).json();
+                if (myGen !== attackGen) return;
                 const out = data.terminalOutput || ('[-] ERROR: ' + (data.error || 'Unknown'));
                 t.appendChild(document.createElement('br')); t.appendChild(document.createElement('br'));
                 const p = document.createElement('span'); p.className = 'text-white'; p.textContent = '> '; t.appendChild(p);
-                let i = 0; (function tw() { 
-                    if (i < out.length) { 
-                        out.charAt(i)==='\n' ? t.appendChild(document.createElement('br')) : t.appendChild(document.createTextNode(out.charAt(i))); 
-                        i++; 
-                        t.scrollTop = t.scrollHeight; 
-                        setTimeout(tw, 10); 
-                    } else { 
-                        fetchLogs(); 
-                        isTyping = false; 
-                    } 
+                let i = 0; (function tw() {
+                    if (myGen !== attackGen) return;
+                    if (i < out.length) {
+                        out.charAt(i)==='\n' ? t.appendChild(document.createElement('br')) : t.appendChild(document.createTextNode(out.charAt(i)));
+                        i++;
+                        t.scrollTop = t.scrollHeight;
+                        setTimeout(tw, 10);
+                    } else {
+                        if (data.audioBase64) {
+                            t.appendChild(document.createElement('br'));
+                            const audioWrapper = document.createElement('div');
+                            audioWrapper.style.marginTop = '8px';
+                            const label = document.createElement('span');
+                            label.className = 'text-slate-400 text-xs';
+                            label.textContent = '[+] Playback: ';
+                            const audio = document.createElement('audio');
+                            audio.controls = true;
+                            audio.style.height = '28px';
+                            audio.style.verticalAlign = 'middle';
+                            audio.src = 'data:audio/wav;base64,' + data.audioBase64;
+                            audioWrapper.appendChild(label);
+                            audioWrapper.appendChild(audio);
+                            t.appendChild(audioWrapper);
+                            t.scrollTop = t.scrollHeight;
+                        }
+                        if (data.screenshotBase64) {
+                            t.appendChild(document.createElement('br'));
+                            const imgWrapper = document.createElement('div');
+                            imgWrapper.style.marginTop = '8px';
+                            const label = document.createElement('span');
+                            label.className = 'text-slate-400 text-xs';
+                            label.textContent = '[+] Screenshot: ';
+                            t.appendChild(imgWrapper);
+                            const img = document.createElement('img');
+                            img.src = 'data:image/jpeg;base64,' + data.screenshotBase64;
+                            img.style.maxWidth = '100%';
+                            img.style.marginTop = '6px';
+                            img.style.borderRadius = '6px';
+                            img.style.border = '1px solid #334155';
+                            imgWrapper.appendChild(label);
+                            imgWrapper.appendChild(document.createElement('br'));
+                            imgWrapper.appendChild(img);
+                            t.scrollTop = t.scrollHeight;
+                        }
+                        if (data.videoFileName) {
+                            t.appendChild(document.createElement('br'));
+                            const videoWrapper = document.createElement('div');
+                            videoWrapper.style.marginTop = '8px';
+                            const label = document.createElement('span');
+                            label.className = 'text-slate-400 text-xs';
+                            label.textContent = '[+] Screen Recording: ';
+                            const video = document.createElement('video');
+                            video.controls = true;
+                            video.autoplay = true;
+                            video.style.maxWidth = '100%';
+                            video.style.marginTop = '6px';
+                            video.style.borderRadius = '6px';
+                            video.style.border = '1px solid #334155';
+                            const tok = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
+                            video.src = `${API_BASE}/api/loot/${data.videoFileName}?token=${encodeURIComponent(tok)}`;
+                            videoWrapper.appendChild(label);
+                            videoWrapper.appendChild(document.createElement('br'));
+                            videoWrapper.appendChild(video);
+                            t.appendChild(videoWrapper);
+                            t.scrollTop = t.scrollHeight;
+                        }
+                        if (data.lootFile) {
+                            t.appendChild(document.createElement('br'));
+                            const tok = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
+                            const dlWrap = document.createElement('div');
+                            dlWrap.style.marginTop = '6px';
+                            const dlLink = document.createElement('a');
+                            dlLink.href = `${API_BASE}/api/loot/${data.lootFile}?token=${encodeURIComponent(tok)}`;
+                            dlLink.download = data.lootFile;
+                            dlLink.style.cssText = 'display:inline-block;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f6;border-radius:6px;padding:3px 10px;font-size:11px;text-decoration:none;font-family:JetBrains Mono,monospace;';
+                            dlLink.textContent = `⬇ Download ${data.lootFile}`;
+                            dlWrap.appendChild(dlLink);
+                            t.appendChild(dlWrap);
+                            t.scrollTop = t.scrollHeight;
+                            refreshLootFiles();
+                        }
+                        fetchLogs();
+                    }
                 })();
-            } catch(e) { 
-                t.appendChild(document.createElement('br')); const es = document.createElement('span'); es.className = 'text-rose-500'; es.textContent = '[-] Error: API Offline'; t.appendChild(es); 
-                isTyping = false; 
+            } catch(e) {
+                if (myGen !== attackGen) return;
+                t.appendChild(document.createElement('br')); const es = document.createElement('span'); es.className = 'text-rose-500'; es.textContent = '[-] Error: API Offline'; t.appendChild(es);
             }
         }
         
+        // Calls the payload attack module with the chosen architecture and encoder;
+        // streams the msfvenom-style output into the dedicated payload terminal panel.
+        async function generatePayload() {
+            const arch = document.getElementById('arch').value;
+            const encoder = document.getElementById('encoder').value;
+            const termWrap = document.getElementById('payload-term-wrap');
+            const term = document.getElementById('payload-term');
+            const btn = document.getElementById('btn-payload-gen');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Generating...';
+            termWrap.classList.remove('hidden');
+            term.innerHTML = '';
+
+            try {
+                const data = await (await fetchAPI('/api/attack', {
+                    method: 'POST',
+                    body: JSON.stringify({ attackType: 'payload', arch, encoder, targetIp: 'Internal Node' })
+                })).json();
+                const out = data.terminalOutput || ('[-] ERROR: ' + (data.error || 'Unknown'));
+                let i = 0;
+                (function tw() {
+                    if (i < out.length) {
+                        out.charAt(i) === '\n' ? term.appendChild(document.createElement('br')) : term.appendChild(document.createTextNode(out.charAt(i)));
+                        i++;
+                        term.scrollTop = term.scrollHeight;
+                        setTimeout(tw, 12);
+                    } else {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-2"></i>Generate Payload';
+                        fetchLogs();
+                    }
+                })();
+            } catch(e) {
+                term.textContent = '[-] Error: API Offline';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-2"></i>Generate Payload';
+            }
+        }
+
+        // Fetches (or stubs) an exploit module from the given URL, saves it to loot,
+        // and appends the module name to the internal repository list on success.
+        async function importExploit() {
+            const url = document.getElementById('exploit-url').value.trim();
+            const moduleType = document.getElementById('exploit-type').value;
+            const output = document.getElementById('exploit-output');
+            const btn = document.getElementById('btn-import');
+            const repoList = document.querySelector('#tab-repo .overflow-y-auto ul');
+
+            function setOutput(text, isError) {
+                output.textContent = text;
+                output.classList.remove('text-slate-500', 'text-rose-400', 'text-emerald-400');
+                output.classList.add(isError ? 'text-rose-400' : 'text-emerald-400');
+            }
+
+            if (!url) { setOutput('[-] Please enter a URL.', true); return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+            setOutput('[*] Connecting to source...', false);
+
+            try {
+                const res = await fetchAPI('/api/exploit/import', {
+                    method: 'POST',
+                    body: JSON.stringify({ url, moduleType })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    setOutput('[-] ' + (data.error || 'Import failed.'), true);
+                } else {
+                    setOutput(data.terminalOutput, false);
+                    if (repoList && data.moduleName) {
+                        const li = document.createElement('li');
+                        li.className = 'hover:bg-slate-700/40 p-2.5 rounded-lg cursor-pointer transition bg-emerald-500/10 border border-emerald-500/20';
+                        li.innerHTML = '<i class="fas fa-bug text-rose-400 mr-2.5"></i>' + data.moduleName;
+                        repoList.appendChild(li);
+                        li.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        setTimeout(() => { li.classList.remove('bg-emerald-500/10', 'border', 'border-emerald-500/20'); }, 3000);
+                    }
+                    document.getElementById('exploit-url').value = '';
+                    fetchLogs();
+                }
+            } catch(e) {
+                setOutput('[-] Error: ' + (e.message || 'API Offline'), true);
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-cloud-arrow-down"></i> Import to Repository';
+        }
+
+        // ─── Loot File Management ─────────────────────────────────────────────────────
+        // deleteLootFile: asks for confirmation then sends a DELETE request for one file.
+        async function deleteLootFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+            try {
+                await fetchAPI(`/api/loot/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                refreshLootFiles();
+            } catch(e) {}
+        }
+
+        // clearAllLoot: fetches the current file list and deletes all files in parallel.
+        async function clearAllLoot() {
+            if (!confirm('Delete ALL loot files?')) return;
+            try {
+                const res = await fetchAPI('/api/loot');
+                if (!res.ok) return;
+                const files = await res.json();
+                await Promise.all(files.map(f => fetchAPI(`/api/loot/${encodeURIComponent(f.name)}`, { method: 'DELETE' })));
+                refreshLootFiles();
+            } catch(e) {}
+        }
+
+        // clearHistory: wipes all audit log entries from the database after confirmation.
+        async function clearHistory() {
+            if (!confirm('Clear all audit history?')) return;
+            try {
+                await fetchAPI('/api/history', { method: 'DELETE' });
+                document.getElementById('logs').innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-600 text-sm italic">No history yet.</td></tr>';
+            } catch(e) {}
+        }
+
+        // Reloads the loot directory listing from the server and re-renders the panel
+        // with file type icons, sizes, timestamps, download links, and delete buttons.
+        async function refreshLootFiles() {
+            try {
+                const res = await fetchAPI('/api/loot');
+                if (!res.ok) return;
+                const files = await res.json();
+                const list = document.getElementById('loot-list');
+                const count = document.getElementById('loot-count');
+                count.textContent = files.length;
+                if (!files.length) { list.innerHTML = '<p class="text-[11px] text-slate-600 italic">No loot captured yet.</p>'; return; }
+                const tok = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
+                const icons = { jpg: 'fa-image text-blue-400', mp4: 'fa-film text-cyan-400', wav: 'fa-volume-high text-yellow-400', txt: 'fa-file-lines text-slate-400', exe: 'fa-skull text-rose-400', rb: 'fa-code text-emerald-400' };
+                list.innerHTML = files.map(f => {
+                    const ext = f.name.split('.').pop();
+                    const icon = icons[ext] || 'fa-file text-slate-500';
+                    const size = f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? (f.size/1024).toFixed(1) + ' KB' : (f.size/1048576).toFixed(1) + ' MB';
+                    const time = new Date(f.mtime).toLocaleTimeString();
+                    return `<div class="flex items-center justify-between py-1.5 border-b border-slate-800/60 last:border-0">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <i class="fas ${icon} text-xs shrink-0"></i>
+                            <span class="text-[11px] text-slate-300 truncate font-mono">${escapeHtml(f.name)}</span>
+                        </div>
+                        <div class="flex items-center gap-3 shrink-0 ml-2">
+                            <span class="text-[10px] text-slate-600">${size}</span>
+                            <span class="text-[10px] text-slate-600">${time}</span>
+                            <a href="${API_BASE}/api/loot/${encodeURIComponent(f.name)}?token=${encodeURIComponent(tok)}" download="${escapeHtml(f.name)}" class="text-[10px] text-blue-400 hover:text-blue-300 transition"><i class="fas fa-download"></i></a>
+                            <button onclick="deleteLootFile('${escapeHtml(f.name)}')" class="text-[10px] text-rose-500 hover:text-rose-300 transition"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) {}
+        }
+
+        // Fetches the 50 most recent audit entries from /api/history and rebuilds the
+        // history table rows.
         async function fetchLogs() {
             try {
                 const res = await fetchAPI('/api/history'); if (!res.ok) return; const data = await res.json();
@@ -960,7 +1326,9 @@
                 ).join('');
             } catch(e) {}
         }
-        /* Admin: User Management */
+        /* Admin: User Management — all endpoints below require the Admin role */
+        // Loads all registered users from /api/admin/users and renders the table with
+        // role badges and action buttons (promote/demote, reset password, delete).
         async function fetchAdminUsers() {
             try {
                 const res = await fetchAPI('/api/admin/users');
@@ -997,6 +1365,7 @@
             } catch(e) { console.error('Failed to fetch users', e); }
         }
 
+        // Sends a role change to /api/admin/users/:id/role and refreshes the user table on success.
         async function toggleUserRole(userId, newRole) {
             if (!confirm('Change this user\'s role to ' + newRole + '?')) return;
             try {
@@ -1008,6 +1377,7 @@
             } catch(e) { alert('Failed to change role.'); }
         }
 
+        // Shows the admin password reset panel pre-filled with the target user's details.
         function openResetPassword(userId, username) {
             document.getElementById('reset-pw-user-id').value = userId;
             document.getElementById('reset-pw-username').textContent = username;
@@ -1016,6 +1386,7 @@
             document.getElementById('reset-pw-panel').scrollIntoView({ behavior: 'smooth' });
         }
 
+        // Validates the new password client-side, then posts it to /api/admin/users/:id/password.
         async function submitResetPassword() {
             const userId = document.getElementById('reset-pw-user-id').value;
             const pw = document.getElementById('reset-pw-input').value;
@@ -1036,6 +1407,7 @@
             } catch(e) { alert('Failed to reset password.'); }
         }
 
+        // Permanently deletes the user account after confirmation.
         async function deleteUser(userId, username) {
             if (!confirm('Permanently delete user "' + username + '"? This cannot be undone.')) return;
             try {
@@ -1045,6 +1417,37 @@
             } catch(e) { alert('Failed to delete user.'); }
         }
 
+        /* Keyboard Enter support — pressing Enter submits the currently visible auth form */
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+
+            const overlay = document.getElementById('connectionOverlay');
+            const overlayVisible = overlay && overlay.style.display !== 'none';
+
+            if (overlayVisible) {
+                if (!document.getElementById('form-login').classList.contains('hidden')) return login();
+                if (!document.getElementById('form-signup').classList.contains('hidden')) return requestRegistration();
+                if (!document.getElementById('form-forgot').classList.contains('hidden')) return requestPasswordReset();
+                if (!document.getElementById('form-verify').classList.contains('hidden')) {
+                    const fn = document.getElementById('btn-verify-action').getAttribute('onclick');
+                    if (fn === 'verifyAndResetPassword()') return verifyAndResetPassword();
+                    return verifyAndRegister();
+                }
+                return;
+            }
+
+            const active = document.activeElement;
+            if (!active) return;
+
+            if (active.id === 'target-url') return runScan();
+            if (active.id === 'target-ip-attack') return runAttack();
+            if (active.id === 'exploit-url') return importExploit();
+            if (active.id === 'reset-pw-input') return submitResetPassword();
+        });
+
+        // ─── Session Restore on Page Load ─────────────────────────────────────────────
+        // Checks localStorage/sessionStorage for a previously saved JWT; if found,
+        // restores the session silently so the user doesn't need to log in again.
         window.addEventListener('DOMContentLoaded', () => {
             const savedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
             const savedUser = localStorage.getItem('currentUser') || sessionStorage.getItem('currentUser');

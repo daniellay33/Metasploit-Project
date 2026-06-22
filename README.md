@@ -103,8 +103,8 @@ All services run inside a Docker bridge network (msf_network).
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/metasploit-project.git
-cd metasploit-project
+git clone https://github.com/daniellay33/Metasploit-Project.git
+cd Metasploit-Project
 ```
 
 ### 2. Configure environment variables
@@ -170,25 +170,27 @@ Copy `.env.example` to `.env` and configure:
 ## Project Structure
 
 ```
-metasploit/
+Metasploit-Project/
 ├── .env.example            # Template for environment variables
-├── .gitignore              # Git ignore rules
-├── .dockerignore           # Docker build context exclusions
 ├── docker-compose.yml      # Multi-container orchestration
-├── init.sql                # PostgreSQL schema initialization
+├── ecs-task-definition.json # AWS ECS Fargate task definition
 ├── README.md               # This file
 │
 ├── backend/
-│   ├── Dockerfile          # Node.js container build
-│   ├── .dockerignore       # Backend-specific Docker exclusions
 │   ├── package.json        # Dependencies and scripts
 │   ├── package-lock.json   # Locked dependency tree
-│   ├── server.js           # Express API server (main application)
-│   ├── server.test.js      # Jest test suite
-│   └── loot/               # Simulated captured files (gitignored)
+│   └── server.js           # Express API server (main application)
 │
-└── frontend/
-    └── index.html          # Single-page application (Tailwind + vanilla JS)
+├── frontend/
+│   ├── index.html          # Single-page application (Tailwind + vanilla JS)
+│   ├── nginx.conf          # Nginx reverse proxy configuration
+│   └── Dockerfile          # Nginx + frontend container build
+│
+└── victim/
+    ├── Dockerfile          # Ubuntu XFCE victim container (linuxserver/webtop)
+    ├── autostart.sh        # PulseAudio + X11 runtime setup
+    ├── start-youtube.sh    # Opens Chromium with YouTube on container boot
+    └── youtube.desktop     # XFCE autostart entry for the browser
 ```
 
 ---

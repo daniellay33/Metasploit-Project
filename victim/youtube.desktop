@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=YouTube
+Exec=chromium-browser --no-sandbox --disable-gpu --disable-dev-shm-usage https://www.youtube.com
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
