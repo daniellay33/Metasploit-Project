@@ -365,3 +365,11 @@ This removes the database volume and rebuilds all containers from scratch.
 ## License
 
 This project is for educational purposes only. Use responsibly and only in authorized environments.
+
+
+## Authors
+
+- **Daniela Yashenko** – [@daniellay33](https://github.com/daniellay33)
+- **Bat-el Ben Farin** – [@Bat-elGol](https://github.com/Bat-elGol)
+
+Both authors contributed to the design, development, and testing of this project, as part of a team project at HIT – Holon Institute of Technology.
